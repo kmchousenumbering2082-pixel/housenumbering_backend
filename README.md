@@ -81,51 +81,6 @@ pip install -r requirements.txt
 uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-# Usage
-
-## Authentication
-
-Use form-data for auth endpoints:
-- `POST /auth/signup`
-- `POST /auth/login`
-- `POST /auth/refresh`
-- `GET /auth/me`
-
-Example login:
-
-```bash
-curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: multipart/form-data" \
-  -F "email=admin@example.com" \
-  -F "password=secret"
-```
-
-Use returned `access_token`:
-
-```http
-Authorization: Bearer <access_token>
-```
-
-# Running in Docker (Single Image Mode)
-
-If needed, you can run only app image directly:
-
-```bash
-docker build -t bms .
-docker run --env-file .env -d -p 8000:8000 bms
-```
-
-# Troubleshooting
-
-1. `NoReferencedTableError` for `users`
-- Ensure users model is imported before metadata creation in standalone scripts.
-
-2. Foreign key violation for `building_geometry.building_id`
-- Insert/fetch building first, then use its DB primary key (`buildings.id`) for geometry row.
-
-3. PostGIS issues
-- Confirm DB container is healthy and extension is available.
-
 # Support
 
 For implementation or deployment support, create an issue in this repository or contact the project maintainer team.
@@ -151,7 +106,7 @@ Developed for Kathmandu Metropolitan City house numbering operations.
 
 # License
 
-License not specified yet. Add your preferred license in this section.
+License not specified yet.
 
 # Project Status
 
