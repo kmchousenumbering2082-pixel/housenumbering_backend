@@ -55,7 +55,6 @@ services:
     working_dir: /code
     restart: always
     entrypoint: "celery -A app.main.celery_app worker -f /logs/worker.log -l DEBUG"
-    # entrypoint: "celery -A project worker -f /logs/worker.log -l DEBUG"
     depends_on:
       - web
       - redis

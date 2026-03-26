@@ -1,21 +1,3 @@
-# FROM python:3.14.2
-# WORKDIR /code
-
-# # Prevent Python from writing pyc files & enable unbuffered logs
-# ENV PYTHONDONTWRITEBYTECODE=1
-# ENV PYTHONUNBUFFERED=1
-
-# # Install the application dependencies
-# COPY ./requirements.txt /code/requirements.txt
-# RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
-
-# # Copy in the source code
-# COPY ./app /code/app
-# EXPOSE 8000
-
-# CMD ["fastapi", "run", "app/main.py", "--port", "8000"]
-
-
 # ----------------- Stage 1: Builder -----------------
 FROM python:3.12.10-slim as builder
 
