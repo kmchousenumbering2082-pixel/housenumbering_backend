@@ -1,0 +1,23 @@
+# ✨ Type (choose one):
+# [ ] ✨ feat      → New feature
+# [ ] 🐛 fix       → Bug fix
+# [ ] ♻️ refactor  → Code improvement
+# [ ] ⚡ perf      → Performance improvement
+# [ ] 📝 docs      → Documentation
+# [ ] 🎨 style     → Formatting / UI
+# [ ] ✅ test      → Tests
+# [ ] 🔧 chore     → Maintenance
+
+# 📌 Description:
+# (Write a short summary)
+
+# 🧠 Details:
+# - What changed?
+# - Why was it needed?
+
+# 🔗 Related:
+# Issue: #
+# PR: #
+
+# ⚠️ Notes:
+# (Anything reviewers should know)
