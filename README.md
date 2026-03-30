@@ -1,6 +1,6 @@
 # Name
 
-Kathmandu Metropolitan City House Numbering System (Bid Management System)
+Kathmandu Metropolitan City House Numbering System
 
 # Description
 
