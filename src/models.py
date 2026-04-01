@@ -121,6 +121,92 @@ class Road(Base):
     slope_distance = Column(Float, nullable=True)
 
 
+class RasterLayer(Base):
+    """
+    A raster is a grid-based representation of geographic data. 
+    This model stores information about the raster file, associated layer, attribute data, and ID.
+    """
+    __tablename__ = "raster_layers"
 
-
+    id = Column(Integer, primary_key=True, index=True)
+    name_en = Column(String(50), nullable=True)
+    name_ne = Column(String(50), nullable=True)
+    raster_file = Column(String(500), nullable=False)  # File path stored as string
+    sld_file = Column(String(500), nullable=True)  # SLD file path for styling
+    attr_data = Column(JSONB, nullable=True)
+    status = Column(String(15), nullable=True, default="pending")  # pending, completed, failed
+    display_on_map = Column(Boolean, default=True)
+    is_public = Column(Boolean, default=True)
+    bbox = Column(JSONB, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     
+    # Relationship to metadata (renamed from 'metadata' to avoid SQLAlchemy reserved attr)
+    raster_metadata = relationship("RasterLayerMetadata", back_populates="raster_layer", 
+                                   cascade="all, delete-orphan")
+
+
+class RasterLayerMetadata(Base):
+    """
+    Stores metadata for a raster layer including width, height, bands, 
+    spatial reference, extent, legend, and statistics.
+    """
+    __tablename__ = "raster_layer_metadata"
+
+    id = Column(Integer, primary_key=True, index=True)
+    raster_layer_id = Column(Integer, ForeignKey("raster_layers.id"), nullable=False)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    numbands = Column(Integer, nullable=True)
+    srid = Column(Integer, nullable=True)
+    extent = Column(JSONB, nullable=True)  # [minx, miny, maxx, maxy]
+    legend = Column(JSONB, nullable=True)
+    stats = Column(JSONB, nullable=True)
+    pixel_size = Column(Float, default=0)
+    minx = Column(Float, default=0)
+    maxx = Column(Float, default=0)
+    miny = Column(Float, default=0)
+    maxy = Column(Float, default=0)
+    file_name = Column(String(100), nullable=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    
+    # Relationship back to RasterLayer
+    raster_layer = relationship("RasterLayer", back_populates="raster_metadata")
+
+
+class BaseLayer(Base):
+    """
+    Stores base layer information (e.g., OSM, Satellite, Orthophoto).
+    """
+    __tablename__ = "base_layers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=True)
+    layer_type = Column(String(50), nullable=False)  # osm, satellite, orthophoto, etc.
+    url = Column(String(500), nullable=True)  # URL for external tile services
+    attribution = Column(String(500), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class BaseLayerName(Base):
+    """
+    Stores localized names and display order for base layers.
+    """
+    __tablename__ = "base_layer_names"
+
+    id = Column(Integer, primary_key=True, index=True)
+    base_layer_id = Column(Integer, ForeignKey("base_layers.id"), nullable=False)
+    name = Column(String(100), nullable=True, index=True)  # Unique identifier (match frontend)
+    label_en = Column(String(100), nullable=True)  # Display name in English
+    label_ne = Column(String(100), nullable=True)  # Display name in Nepali
+    order = Column(Integer, default=1)
+    is_visible = Column(Boolean, default=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    
+    __table_args__ = (
+        # Ensure this order field is properly indexed for sorting
+    )
