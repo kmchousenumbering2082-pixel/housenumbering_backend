@@ -8,6 +8,43 @@ from passlib.context import CryptContext
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _ensure_unique_email(db: Session, email: str | None, exclude_user_id: int | None = None) -> None:
+    if not email:
+        return
+
+    normalized_email = User.normalize_email(email)
+    query = db.query(User).filter(User.email == normalized_email)
+    if exclude_user_id is not None:
+        query = query.filter(User.id != exclude_user_id)
+
+    if query.first():
+        raise HTTPException(status_code=400, detail="Email already exists")
+
+
+def _ensure_unique_username(
+    db: Session,
+    username: str | None,
+    exclude_user_id: int | None = None,
+) -> None:
+    normalized_username = _normalize_optional_text(username)
+    if not normalized_username:
+        return
+
+    query = db.query(User).filter(User.username == normalized_username)
+    if exclude_user_id is not None:
+        query = query.filter(User.id != exclude_user_id)
+
+    if query.first():
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
@@ -28,21 +65,17 @@ def get_user(db: Session, user_id: int) -> User:
 
 
 def create_user(db: Session, user_data: UserCreate) -> User:
-    if user_data.email:
-        existing_email = db.query(User).filter(User.email == user_data.email).first()
-        if existing_email:
-            raise HTTPException(status_code=400, detail="Email already exists")
+    _ensure_unique_email(db, user_data.email)
+    _ensure_unique_username(db, user_data.username)
 
-    if user_data.username:
-        existing_username = db.query(User).filter(User.username == user_data.username).first()
-        if existing_username:
-            raise HTTPException(status_code=400, detail="Username already exists")
-
-    hashed_password = hash_password(user_data.password)
+    normalized_email = User.normalize_email(user_data.email) if user_data.email else None
+    normalized_username = _normalize_optional_text(user_data.username)
 
     db_user = User(
-        **user_data.model_dump(exclude={"password"}),
-        password=hashed_password
+        **user_data.model_dump(exclude={"password", "email", "username"}),
+        email=normalized_email,
+        username=normalized_username,
+        password=hash_password(user_data.password),
     )
 
     db.add(db_user)
@@ -56,26 +89,20 @@ def update_user(db: Session, user_id: int, user_data: UserUpdate) -> User:
 
     update_data = user_data.model_dump(exclude_unset=True)
 
-    if "password" in update_data:
+    if "email" in update_data:
+        _ensure_unique_email(db, update_data.get("email"), exclude_user_id=user_id)
+        update_data["email"] = (
+            User.normalize_email(update_data["email"]) if update_data.get("email") else None
+        )
+
+    if "username" in update_data:
+        _ensure_unique_username(db, update_data.get("username"), exclude_user_id=user_id)
+        update_data["username"] = _normalize_optional_text(update_data.get("username"))
+
+    if "password" in update_data and update_data["password"]:
         update_data["password"] = hash_password(update_data["password"])
-
-    if "email" in update_data and update_data["email"]:
-        existing_email = (
-            db.query(User)
-            .filter(User.email == update_data["email"], User.id != user_id)
-            .first()
-        )
-        if existing_email:
-            raise HTTPException(status_code=400, detail="Email already exists")
-
-    if "username" in update_data and update_data["username"]:
-        existing_username = (
-            db.query(User)
-            .filter(User.username == update_data["username"], User.id != user_id)
-            .first()
-        )
-        if existing_username:
-            raise HTTPException(status_code=400, detail="Username already exists")
+    elif "password" in update_data:
+        update_data.pop("password")
 
     for key, value in update_data.items():
         setattr(user, key, value)

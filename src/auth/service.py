@@ -14,6 +14,33 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 
+def _get_active_user_by_id(db: Session, user_id: int) -> User | None:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.can_login():
+        return None
+    return user
+
+
+def _decode_and_validate_token_subject(token: str, expected_type: str) -> int:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=f"Invalid or expired {expected_type} token" if expected_type == "refresh" else "Invalid or expired token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        token_type: str | None = payload.get("type")
+        user_id: str | None = payload.get("sub")
+        if token_type != expected_type or user_id is None:
+            raise credentials_exception
+        return int(user_id)
+    except JWTError as exc:
+        raise credentials_exception from exc
+    except (TypeError, ValueError) as exc:
+        raise credentials_exception from exc
+
+
 def _create_token(user: User, token_type: str, expires_delta: timedelta) -> tuple[str, datetime]:
     issued_at = datetime.now(UTC)
     expire_at = issued_at + expires_delta
@@ -43,7 +70,7 @@ def _issue_token_pair(user: User) -> tuple[str, datetime, str, datetime]:
 
 
 def signup(db: Session, email: str, password: str, username: str | None = None):
-    email = email.strip().lower()
+    email = User.normalize_email(email)
     username = username.strip() if isinstance(username, str) and username.strip() else None
 
     existing_user = db.query(User).filter(User.email == email).first()
@@ -57,6 +84,8 @@ def signup(db: Session, email: str, password: str, username: str | None = None):
         email=email,
         username=username,
         password=hash_password(password),
+        is_active=True,
+        email_verified_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(user)
     db.commit()
@@ -66,7 +95,7 @@ def signup(db: Session, email: str, password: str, username: str | None = None):
 
 
 def login(db: Session, email: str, password: str):
-    email = email.strip().lower()
+    email = User.normalize_email(email)
 
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.password):
@@ -75,50 +104,40 @@ def login(db: Session, email: str, password: str):
             detail="Invalid email or password",
         )
 
+    if not user.can_login():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive or deleted",
+        )
+
+    user.mark_login()
+    db.add(user)
+    db.commit()
+
     return _issue_token_pair(user)
 
 
 def refresh_tokens(db: Session, refresh_token: str):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired refresh token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    try:
-        payload = jwt.decode(refresh_token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        token_type: str | None = payload.get("type")
-        user_id: str | None = payload.get("sub")
-        if token_type != "refresh" or user_id is None:
-            raise credentials_exception
-    except JWTError as exc:
-        raise credentials_exception from exc
-
-    user = db.query(User).filter(User.id == int(user_id)).first()
+    user_id = _decode_and_validate_token_subject(refresh_token, expected_type="refresh")
+    user = _get_active_user_by_id(db, user_id)
     if not user:
-        raise credentials_exception
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     return _issue_token_pair(user)
 
 
 def get_current_user_from_token(db: Session, token: str) -> User:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        token_type: str | None = payload.get("type")
-        user_id: str | None = payload.get("sub")
-        if token_type != "access" or user_id is None:
-            raise credentials_exception
-    except JWTError as exc:
-        raise credentials_exception from exc
-
-    user = db.query(User).filter(User.id == int(user_id)).first()
+    user_id = _decode_and_validate_token_subject(token, expected_type="access")
+    user = _get_active_user_by_id(db, user_id)
     if not user:
-        raise credentials_exception
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     return user
