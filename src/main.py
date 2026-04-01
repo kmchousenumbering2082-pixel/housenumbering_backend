@@ -3,6 +3,8 @@ import time
 
 from celery import Celery
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
@@ -10,11 +12,24 @@ from src.auth.routes import router as auth
 from src.buildings.routes import router as buildings
 from src.database import engine
 from src.models import Base
+from src.palika_profile.routes import router as palika_profile
 from src.roads.routes import router as roads
 from src.users.routes import router as users
-from src.users import models as user_models  # noqa: F401
+from src.raster.routes import router as raster, base_layer
+from src.palika_profile import models as palika_models
+from src.users import models as user_models
 
 app = FastAPI()
+
+app.mount("/media", StaticFiles(directory="media"), name="media")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 logger = logging.getLogger(__name__)
@@ -59,4 +74,6 @@ app.include_router(buildings)
 app.include_router(roads)
 app.include_router(users)
 app.include_router(auth)
-
+app.include_router(palika_profile)
+app.include_router(raster)
+app.include_router(base_layer)

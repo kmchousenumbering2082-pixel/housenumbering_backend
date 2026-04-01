@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenLayers VectorTile Example</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/ol@v7.4.0/ol.css"
+      type="text/css"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.5/dist-browser/geotiff.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .map {
+        width: 100%;
+        height: 100vh;
+      }
+
+      .controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 1000;
+        background-color: rgb(144, 207, 230);
+        padding: 10px;
+        border-radius: 5px;
+        min-width: 220px;
+      }
+
+      label {
+        font-weight: bold;
+      }
+
+      select {
+        font-size: 16px;
+        padding: 5px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+      }
+
+      .layer-toggles {
+        margin-top: 10px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .layer-toggles label {
+        font-weight: normal;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .raster-select {
+        margin-top: 10px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .base-layer-select {
+        margin-top: 10px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .status {
+        margin-top: 8px;
+        font-size: 12px;
+      }
+
+      .tooltip {
+        position: absolute;
+        background: white;
+        padding: 5px;
+        border: 1px solid black;
+        border-radius: 3px;
+        pointer-events: none;
+        z-index: 1001;
+        white-space: pre-wrap;
+        max-width: 300px;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/ol@v7.4.0/dist/ol.js"></script>
+  </head>
+
+  <body>
+    <div class="controls">
+      <label for="locationSelect">Select Location:</label>
+      <select id="locationSelect">
+        <option value="kathmandu" selected>Kathmandu</option>
+        <option value="janakpur">Janakpur</option>
+        <option value="butwal">Butwal</option>
+      </select>
+
+      <div class="base-layer-select">
+        <label for="baseLayerSelect">Base Layer:</label>
+        <select id="baseLayerSelect">
+          <option value="osm" selected>OSM</option>
+          <option value="raster">Raster</option>
+        </select>
+      </div>
+
+      <div class="layer-toggles">
+        <label><input type="checkbox" id="buildingsToggle" checked /> Buildings</label>
+        <label><input type="checkbox" id="roadsToggle" /> Roads</label>
+      </div>
+      <div id="status" class="status"></div>
+    </div>
+    <div id="map" class="map"></div>
+    <div id="tooltip" class="tooltip" style="display: none"></div>
+
+    <script>
+      const API_BASE = "http://localhost:8000";
+      const RASTER_URL = `${API_BASE}/media/raster/re_re.tif`;
+
+      proj4.defs("EPSG:32644", "+proj=utm +zone=44 +datum=WGS84 +units=m +no_defs");
+      proj4.defs("EPSG:32645", "+proj=utm +zone=45 +datum=WGS84 +units=m +no_defs");
+      proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
+
+      const locations = {
+        kathmandu: [85.3239, 27.7172],
+        janakpur: [85.9210, 26.7278],
+        butwal: [83.4558, 27.7005],
+      };
+
+      const statusEl = document.getElementById("status");
+      const baseLayerSelect = document.getElementById("baseLayerSelect");
+
+      const view = new ol.View({
+        center: ol.proj.fromLonLat(locations.kathmandu),
+        zoom: 16,
+      });
+
+      const buildingVectorTileSource = new ol.source.VectorTile({
+        format: new ol.format.MVT(),
+        url: "http://localhost:8000/api/v1/rasters/building-vector-tile/{z}/{x}/{y}/",
+      });
+
+      const roadVectorTileSource = new ol.source.VectorTile({
+        format: new ol.format.MVT(),
+        url: "http://localhost:8000/api/v1/rasters/road-vector-tile/{z}/{x}/{y}/",
+      });
+
+      const buildingVectorTileLayer = new ol.layer.VectorTile({
+        source: buildingVectorTileSource,
+        style: new ol.style.Style({
+          stroke: new ol.style.Stroke({
+            color: "#1d4ed8",
+            width: 2,
+          }),
+          fill: new ol.style.Fill({
+            color: "rgba(29, 78, 216, 0.15)",
+          }),
+        }),
+      });
+
+      const roadVectorTileLayer = new ol.layer.VectorTile({
+        source: roadVectorTileSource,
+        style: new ol.style.Style({
+          stroke: new ol.style.Stroke({
+            color: "#dc2626",
+            width: 3,
+          }),
+          fill: new ol.style.Fill({
+            color: "rgba(220, 38, 38, 0.08)",
+          }),
+        }),
+      });
+
+      const osmBaseLayer = new ol.layer.Tile({
+        source: new ol.source.OSM(),
+      });
+
+      let rasterSource = null;
+      let rasterBaseLayer = null;
+
+      async function ensureRasterBaseLayer() {
+        if (!rasterSource) {
+          rasterSource = new ol.source.GeoTIFF({
+            sources: [{ url: RASTER_URL }],
+            convertToRGB: "auto",
+            loadMissingProjection: true,
+            transition: 0,
+          });
+
+          rasterBaseLayer = new ol.layer.WebGLTile({
+            source: rasterSource,
+            opacity: 1,
+          });
+          rasterBaseLayer.setVisible(false);
+          map.getLayers().insertAt(0, rasterBaseLayer);
+        }
+
+        if (rasterSource.getState() === "error") {
+          throw rasterSource.getError();
+        }
+
+        const viewConfig = await rasterSource.getView();
+        if (viewConfig?.extent) {
+          map.getView().fit(viewConfig.extent, {
+            padding: [40, 40, 40, 40],
+            duration: 8000,
+            maxZoom: 17,
+          });
+        }
+
+        statusEl.textContent = "raster loaded.";
+        return rasterBaseLayer;
+      }
+
+      function showOsmBaseLayer() {
+        osmBaseLayer.setVisible(true);
+        if (rasterBaseLayer) {
+          rasterBaseLayer.setVisible(false);
+        }
+      }
+
+      function showRasterBaseLayer() {
+        osmBaseLayer.setVisible(false);
+        if (rasterBaseLayer) {
+          rasterBaseLayer.setVisible(true);
+        }
+      }
+
+      const map = new ol.Map({
+        target: "map",
+        layers: [osmBaseLayer, buildingVectorTileLayer, roadVectorTileLayer],
+        view: view,
+      });
+
+      const buildingsToggle = document.getElementById("buildingsToggle");
+      const roadsToggle = document.getElementById("roadsToggle");
+
+      buildingsToggle.addEventListener("change", function () {
+        buildingVectorTileLayer.setVisible(buildingsToggle.checked);
+      });
+
+      roadsToggle.addEventListener("change", function () {
+        roadVectorTileLayer.setVisible(roadsToggle.checked);
+      });
+
+      buildingVectorTileLayer.setVisible(buildingsToggle.checked);
+      roadVectorTileLayer.setVisible(roadsToggle.checked);
+
+      baseLayerSelect.addEventListener("change", async function () {
+        if (baseLayerSelect.value === "osm") {
+          showOsmBaseLayer();
+          statusEl.textContent = "OSM baselayer active.";
+          return;
+        }
+
+        await ensureRasterBaseLayer();
+        showRasterBaseLayer();
+      });
+
+      document.getElementById("locationSelect").addEventListener("change", function (e) {
+        const location = locations[e.target.value];
+        if (location) {
+          view.animate({
+            center: ol.proj.fromLonLat(location),
+            zoom: 16,
+            duration: 8000,
+          });
+        }
+      });
+
+      const tooltip = document.getElementById("tooltip");
+      const overlay = new ol.Overlay({
+        element: tooltip,
+        offset: [10, 0],
+        positioning: "bottom-left",
+      });
+      map.addOverlay(overlay);
+
+      map.on("pointermove", function (evt) {
+        const feature = map.forEachFeatureAtPixel(evt.pixel, function (feat) {
+          return feat;
+        });
+        if (feature) {
+          overlay.setPosition(evt.coordinate);
+          tooltip.style.display = "block";
+          tooltip.innerHTML = JSON.stringify(feature.getProperties(), null, 2);
+        } else {
+          tooltip.style.display = "none";
+        }
+      });
+
+      statusEl.textContent = "baselayer active.";
+    </script>
+  </body>
+</html>
