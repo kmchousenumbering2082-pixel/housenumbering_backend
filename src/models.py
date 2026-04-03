@@ -35,7 +35,7 @@ class Building(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     building_id = Column(Integer, nullable=True)
-    road_id = Column(Integer, nullable=True)
+    road_id = Column(Integer, ForeignKey("roads.id", ondelete="SET NULL"), nullable=True, index=True)
     main_building_id = Column(Integer, nullable=True)
     
     # Geometry fields
@@ -70,6 +70,7 @@ class Building(Base):
     plus_code = Column(String(20), nullable=True)
     bbox = Column(JSON, nullable=True)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    road = relationship("Road", back_populates="buildings", foreign_keys=[road_id])
 
 
 class RoadGeometry(Base):
@@ -95,6 +96,7 @@ class Road(Base):
 
     geometry = relationship("RoadGeometry", back_populates = "road",
                             uselist = False, cascade = "all, delete-orphan")
+    buildings = relationship("Building", back_populates="road")
 
     id = Column(Integer, primary_key=True, index=True)
     unique_id = Column(String(100), nullable=True)

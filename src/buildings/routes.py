@@ -10,6 +10,7 @@ from src.pagination import Pagination
 
 from src.buildings.schema import BuildingCreate, BuildingResponse
 from src.buildings.service import (
+    assign_roads_to_all_buildings,
     create_building,
     delete_building,
     get_building,
@@ -50,6 +51,7 @@ def list_buildings_route(
         order=order,
     )
 
+
 @router.patch("/{building_id}", response_model=BuildingResponse)
 def partial_update_building_route(
     building_id: int,
@@ -87,3 +89,14 @@ def delete_building_route(
 ):
     delete_building(db=db, building_id=building_id)
     return {"detail": "Building deleted"}
+
+
+@router.post("/assign-road")
+def assign_building_roads(
+    distance_limit: int = 100,
+    db: Session = Depends(get_db),
+):
+    return assign_roads_to_all_buildings(
+        db=db,
+        distance_limit=distance_limit,
+    )
