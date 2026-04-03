@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 from typing import Optional
 
+from src.roads.schema import RoadResponse
+
 class BuildingCreate(BaseModel):
     building_id: Optional[int]
     road_id: Optional[int]
@@ -38,11 +40,13 @@ class BuildingGeometryCreate(BaseModel):
 
 class BuildingResponse(BaseModel):
     building_id: Optional[int]
+    road_id: Optional[int]
     roof_type: Optional[str]
     plinth_area: Optional[float]
     lat_field: Optional[str]
     long_field: Optional[str]
     ward_no: Optional[int]
+    road: Optional[RoadResponse] = None
 
     class Config:
         from_attributes = True
