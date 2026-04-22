@@ -1,21 +1,45 @@
 import json
 import math
 import random
-from typing import Any
-
-from geoalchemy2.shape import from_shape
-from shapely.geometry import LineString, MultiLineString, shape
-from shapely.ops import transform
-from sqlalchemy import func
+import logging
 from sqlalchemy.orm import Session
+from geoalchemy2.shape import from_shape
+from shapely.geometry import LineString, MultiLineString
 
 from src import database
 from src.models import Road, RoadGeometry
-from src.users.models import User
 from src.enums.roads import RoadCategory, RoadClass, RoadLane, RoadType, RoadDirection
+from src.users.models import User
+from pyproj import Transformer      
+from shapely.ops import transform  
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+transformer = Transformer.from_crs("EPSG:32645", "EPSG:4326", always_xy=True)
+
+def parse_geometry(geom_dict):
+    """Parse GeoJSON geometry, reproject from UTM to WGS84."""
+    geom_type = geom_dict.get("type", "").upper()
+    coords = geom_dict.get("coordinates", [])
+
+    if geom_type == "LINESTRING":
+        lines = [[(x, y) for x, y, *_ in coords]]
+    elif geom_type == "MULTILINESTRING":
+        lines = [[(x, y) for x, y, *_ in line] for line in coords]
+    else:
+        logger.warning(f"Unsupported geometry type: {geom_type}")
+        return None
+
+    valid_lines = [LineString(l) for l in lines if len(l) >= 2]
+    if not valid_lines:
+        return None
+
+    raw = MultiLineString(valid_lines)
+    return transform(transformer.transform, raw) 
 
 
-def clean_nan(value: Any) -> Any:
+def clean_nan(value):
     if isinstance(value, float) and math.isnan(value):
         return None
     if isinstance(value, dict):
@@ -25,141 +49,93 @@ def clean_nan(value: Any) -> Any:
     return value
 
 
-def remove_z(geom):
-    """Strip Z dimension from geometry if present."""
-    return transform(lambda x, y, z=None: (x, y), geom)
-
-
-def get_prop(props: dict[str, Any], *keys: str) -> Any:
+def get_prop(props, *keys):
     for key in keys:
         if key in props:
             return props[key]
     return None
 
 
-def normalize_unique_id(value: Any) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip().replace(" ", "")
-    return normalized or None
-
-
-def get_enum_value_or_random(value: Any, enum_cls) -> str:
-    if value is None:
-        return random.choice([item.value for item in enum_cls])
-
-    normalized = str(value).strip().lower()
-    if not normalized:
-        return random.choice([item.value for item in enum_cls])
-
-    for item in enum_cls:
-        if normalized in (item.value.lower(), item.name.lower()):
-            return item.value
-
+def get_enum_value(value, enum_cls):
+    if value:
+        normalized = str(value).strip().lower()
+        for item in enum_cls:
+            if normalized in (item.value.lower(), item.name.lower()):
+                return item.value
     return random.choice([item.value for item in enum_cls])
 
 
-with open("road14.geojson", encoding="utf-8") as f:
+with open("finalroad.geojson", encoding="utf-8") as f:
     data = json.load(f)
 
 db: Session = database.SessionLocal()
-counter = 0
-skipped = 0
-created_roads = 0
+imported = skipped = created = 0
 
-for feature in data["features"]:
-    geom = feature["geometry"]
-    props = feature["properties"]
+logger.info(f"Processing {len(data['features'])} features...")
 
-    geom_shape = remove_z(shape(geom))
+try:
+    for feature in data["features"]:
+        props = feature.get("properties", {})
+        raw_id = get_prop(props, "Unique_ID", "unique_id", "UNIQUE_ID")
+        unique_id = str(raw_id).strip().replace(" ", "") if raw_id else None
 
-    if isinstance(geom_shape, LineString):
-        geom_shape = MultiLineString([geom_shape])
+        if not unique_id:
+            logger.warning("Missing Unique_ID, skipping.")
+            skipped += 1
+            continue
 
-    if geom_shape.is_empty:
-        print(f"Skipping empty geometry for id={props.get('id')}")
-        skipped += 1
-        continue
+        # Parse full geometry
+        geom_shape = parse_geometry(feature["geometry"])
+        if not geom_shape or geom_shape.is_empty:
+            logger.warning(f"Invalid geometry for {unique_id}, skipping.")
+            skipped += 1
+            continue
 
-    unique_id = normalize_unique_id(get_prop(props, "Unique_ID", "unique_id", "UNIQUE_ID"))
-    if not unique_id:
-        print(f"Missing Unique_ID for feature id={props.get('id')}, skipping.")
-        skipped += 1
-        continue
+        # Find or create Road
+        road = db.query(Road).filter(Road.unique_id == unique_id).first()
+        centroid = geom_shape.centroid
 
-    road = (
-        db.query(Road)
-        .filter(func.lower(func.replace(func.trim(Road.unique_id), " ", "")) == unique_id.lower())
-        .first()
-    )
+        if not road:
+            road = Road(
+                unique_id=unique_id,
+                road_id=get_prop(props, "id", "road_id"),
+                road_name_en=get_prop(props, "kvmp_nam"),
+                road_name_ne=get_prop(props, "nepali_nam"),
+                road_width=clean_nan(get_prop(props, "road_width")),
+                road_class=get_enum_value(get_prop(props, "road_class", "road_clas"), RoadClass),
+                road_type=get_enum_value(get_prop(props, "road_type", "road_typ"), RoadType),
+                road_lane=get_enum_value(get_prop(props, "road_lane", "roadlane"), RoadLane),
+                road_category=get_enum_value(get_prop(props, "road_category", "road_categ"), RoadCategory),
+                direction=get_enum_value(get_prop(props, "direction"), RoadDirection),
+                lat_field=str(centroid.y),
+                long_field=str(centroid.x),
+                attr_data=clean_nan(props),
+            )
+            db.add(road)
+            db.flush()
+            created += 1
+            logger.info(f"Created road: {unique_id}")
 
-    centroid = geom_shape.centroid
-    lat_value = str(centroid.y)
-    lon_value = str(centroid.x)
+        # Skip if geometry already exists
+        if db.query(RoadGeometry).filter(RoadGeometry.road_id == road.id).first():
+            logger.info(f"Geometry exists for {unique_id}, skipping.")
+            skipped += 1
+            continue
 
-    lane_value = get_enum_value_or_random(get_prop(props, "road_lane", "roadlane"), RoadLane)
-    category_value = get_enum_value_or_random(
-        get_prop(props, "road_category", "road_categ", "category"),
-        RoadCategory,
-    )
-    type_value = get_enum_value_or_random(
-        get_prop(props, "road_type", "road_typ", "type"), RoadType
-    )
-    class_value = get_enum_value_or_random(
-        get_prop(props, "road_class", "road_clas", "class"), RoadClass
-    )
-    direction_value = get_enum_value_or_random(
-        get_prop(props, "direction"), RoadDirection
-    )
+        # Store full geometry
+        db.add(RoadGeometry(
+            road_id=road.id,
+            geom=from_shape(geom_shape, srid=4326),
+        ))
+        imported += 1
+        logger.info(f" Imported {unique_id}")
 
-    if not road:
-        road = Road(
-            unique_id=unique_id,
-            road_id=get_prop(props, "id", "road_id"),
-            road_name_en=get_prop(props, "kvmp_nam"),
-            road_name_ne=get_prop(props, "nepali_nam"),
-            road_width=clean_nan(get_prop(props, "road_width")),
-            road_class=class_value,
-            attr_data=clean_nan(props),
-            road_type=type_value,
-            road_lane=lane_value,
-            road_category=category_value,
-            direction=direction_value,
-            lat_field=lat_value,
-            long_field=lon_value,
-        )
-        db.add(road)
-        db.flush()
-        created_roads += 1
-        print(f"Created missing Road row for unique_id={unique_id}.")
-    else:
-        # Backfill missing metadata from geometry and enum defaults.
-        if not road.road_lane:
-            road.road_lane = lane_value
-        if not road.road_category:
-            road.road_category = category_value
-        if not road.lat_field:
-            road.lat_field = lat_value
-        if not road.long_field:
-            road.long_field = lon_value
+    db.commit()
+    logger.info(f"\n Done — imported: {imported}, created: {created}, skipped: {skipped}")
 
-    existing = db.query(RoadGeometry).filter(RoadGeometry.road_id == road.id).first()
-    if existing:
-        print(f"Geometry already exists for road.id={road.id}, skipping.")
-        skipped += 1
-        continue
-
-    road_geometry = RoadGeometry(
-        geom=from_shape(geom_shape, srid=4326),
-        road_id=road.id,
-    )
-
-    db.add(road_geometry)
-    counter += 1
-
-db.commit()
-db.close()
-
-print(f"\n{counter} geometries inserted successfully")
-print(f"{created_roads} missing roads auto-created")
-print(f"{skipped} skipped")
+except Exception as e:
+    db.rollback()
+    logger.error(f"Fatal error: {e}")
+    raise
+finally:
+    db.close()
