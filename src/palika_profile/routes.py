@@ -22,7 +22,7 @@ from src.palika_profile.schema import (
 )
 from src.palika_profile import service as palika_service
 
-router = APIRouter(prefix="/palika-profile", tags=["palika_profile"])
+router = APIRouter(prefix="/palika_profile", tags=["palika_profile"])
 
 PROFILE_LOGO_DIR = Path("media") / "palika_profile" / "logos"
 
@@ -108,7 +108,7 @@ async def update_palika_profile(
     return palika_service.update_palika_profile(db=db, profile_id=profile_id, payload=payload)
 
 
-@router.post("/geometry-files/upload", response_model=PalikaGeometryUploadSummary)
+@router.post("/geometry_files/upload", response_model=PalikaGeometryUploadSummary)
 def upload_palika_geometry_file(
     file_upload: UploadFile = File(...),
     _=Depends(get_current_user),
@@ -117,7 +117,7 @@ def upload_palika_geometry_file(
     return palika_service.upload_palika_geometry_file(db=db, upload=file_upload)
 
 
-@router.post("/ward-geometries/upload", response_model=PalikaWardGeometryUploadSummary)
+@router.post("/ward_geometries/upload", response_model=PalikaWardGeometryUploadSummary)
 def upload_palika_ward_geometry_file(
     file_upload: UploadFile = File(...),
     ward_column: str | None = Form(default=None),
@@ -138,11 +138,11 @@ def get_palika_geometry(db: Session = Depends(get_db)):
     return palika_service.get_palika_geometry(db=db)
 
 
-@router.get("/ward-geometries", response_model=List[PalikaWardGeometryResponse])
+@router.get("/ward_geometries", response_model=List[PalikaWardGeometryResponse])
 def list_palika_ward_geometries(db: Session = Depends(get_db)):
     return palika_service.list_palika_ward_geometries(db=db)
 
 
-@router.get("/ward-geometries/{ward_no}", response_model=PalikaWardGeometryResponse)
+@router.get("/ward_geometries/{ward_no}", response_model=PalikaWardGeometryResponse)
 def get_palika_ward_geometry(ward_no: int, db: Session = Depends(get_db)):
     return palika_service.get_palika_ward_geometry_by_ward(db=db, ward_no=ward_no)
