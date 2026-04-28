@@ -9,22 +9,22 @@ from datetime import datetime
 load_dotenv()
 
 SMTP_SERVER = os.getenv("SMTP_HOST")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
-SMTP_USER = os.getenv("SMTP_USER")
-SMTP_PASSWORD = os.getenv("SMTP_PASS")
-FROM_EMAIL = os.getenv("SMTP_FROM")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("EMAIL_HOST_USER")
+SMTP_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+FROM_EMAIL = os.getenv("EMAIL_HOST_USER")
 BACKEND_API_URL = os.getenv("BACKEND_API_URL", "http://localhost:8000")
 
 
 def send_email(to_email: str, subject: str, html_content: str) -> bool:
     """
     Send email via SMTP.
-    
+
     Args:
         to_email: Recipient email address
         subject: Email subject
         html_content: HTML email content
-    
+
     Returns:
         True if email was sent successfully, False otherwise
     """
@@ -56,11 +56,11 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
 def render_template(template_content: str, context: dict) -> str:
     """
     Render Jinja2 template with context variables.
-    
+
     Args:
         template_content: Template HTML string
         context: Dictionary of variables to render
-    
+
     Returns:
         Rendered HTML string
     """
@@ -71,13 +71,13 @@ def render_template(template_content: str, context: dict) -> str:
 def send_new_user_email(user_email: str, user_name: str, uid: str, token: str) -> bool:
     """
     Send new user registration email with activation link.
-    
+
     Args:
         user_email: User's email address
         user_name: User's display name
         uid: User ID encoded in base64
         token: Activation token
-    
+
     Returns:
         True if email sent successfully
     """
@@ -101,16 +101,18 @@ def send_new_user_email(user_email: str, user_name: str, uid: str, token: str) -
     return send_email(user_email, "Complete Your Registration", html_content)
 
 
-def send_forgot_password_email(user_email: str, user_name: str, uid: str, token: str) -> bool:
+def send_forgot_password_email(
+    user_email: str, user_name: str, uid: str, token: str
+) -> bool:
     """
     Send password reset email with reset link.
-    
+
     Args:
         user_email: User's email address
         user_name: User's display name
         uid: User ID encoded in base64
         token: Password reset token
-    
+
     Returns:
         True if email sent successfully
     """

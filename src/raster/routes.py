@@ -2,7 +2,16 @@ from typing import List
 
 from pathlib import Path as FilePath
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Response, Path
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    Response,
+    Path,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -46,7 +55,7 @@ def _process_raster_upload(
         display_on_map=display_on_map,
         is_public=is_public,
     )
-    
+
     result = raster_service.create_raster_layer(
         db=db,
         upload=file_upload,
@@ -68,31 +77,15 @@ def upload_raster_file(
 ):
     """
     Upload a raster DEM/orthophoto file and save it with automatic metadata extraction.
-    
+
     Supported formats: .tif, .tiff, .geotiff, .ecw, .vrt, .jp2, .jp2k
-    
+
     The endpoint will:
     - Validate the raster file format
     - Extract raster metadata (width, height, bands, SRID, extent)
     - Store the file and metadata in the database
     - Return raster details for frontend visualization
     """
-    return _process_raster_upload(
-        file_upload, name_en, name_ne, display_on_map, is_public, current_user, db
-    )
-
-
-@router.post("/upload/", response_model=RasterUploadSummary)
-def upload_raster_file_with_slash(
-    file_upload: UploadFile = File(...),
-    name_en: str | None = Form(None),
-    name_ne: str | None = Form(None),
-    display_on_map: bool = Form(default=True),
-    is_public: bool = Form(default=True),
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Same as /upload but accepts trailing slash"""
     return _process_raster_upload(
         file_upload, name_en, name_ne, display_on_map, is_public, current_user, db
     )
@@ -107,7 +100,7 @@ def list_raster_layers(
 ):
     """
     List all raster layers with pagination.
-    
+
     Args:
         skip: Number of records to skip (default: 0)
         limit: Maximum records to return (default: 100)
@@ -185,9 +178,9 @@ def create_base_layer(
 ):
     """
     Create a new base layer (e.g., OSM, Satellite, Orthophoto).
-    
+
     Base layers are available for use as map backgrounds in the frontend.
-    
+
     Form fields:
     - layer_type (required): Type of base layer (osm, satellite, terrain, orthophoto, etc.)
     - name: Display name for the layer
@@ -202,7 +195,7 @@ def create_base_layer(
         attribution=attribution,
         is_active=is_active,
     )
-    
+
     layer = raster_service.create_base_layer(
         db=db,
         payload=payload,
@@ -219,7 +212,7 @@ def list_base_layers(
 ):
     """
     List all available base layers.
-    
+
     Returns base layers ordered by their display order.
     """
     layers = raster_service.list_base_layers(db, skip=skip, limit=limit)
@@ -254,6 +247,7 @@ def delete_base_layer(
     """Delete a base layer."""
     raster_service.delete_base_layer(db, layer_id)
     return {"message": "Base layer deleted successfully"}
+
 
 # =============================================================================
 # VECTOR TILE ENDPOINTS
@@ -317,17 +311,20 @@ _ROAD_MVT_SQL = text(
     """
 )
 
+
 def _fetch_building_tile(db: Session, z: int, x: int, y: int) -> bytes:
     result = db.execute(_BUILDING_MVT_SQL, {"z": z, "x": x, "y": y}).scalar()
     if result is None:
         return b""
     return bytes(result)
 
+
 def _fetch_road_tile(db: Session, z: int, x: int, y: int) -> bytes:
     result = db.execute(_ROAD_MVT_SQL, {"z": z, "x": x, "y": y}).scalar()
     if result is None:
         return b""
     return bytes(result)
+
 
 @router.get("/building-vector-tile/{z}/{x}/{y}")
 def get_building_vector_tile(
@@ -338,10 +335,13 @@ def get_building_vector_tile(
 ):
     max_index = (1 << z) - 1
     if x > max_index or y > max_index:
-        raise HTTPException(status_code=400, detail="Tile x/y is out of range for zoom level")
+        raise HTTPException(
+            status_code=400, detail="Tile x/y is out of range for zoom level"
+        )
 
     tile_bytes = _fetch_building_tile(db, z, x, y)
     return Response(content=tile_bytes, media_type="application/vnd.mapbox-vector-tile")
+
 
 @router.get("/road-vector-tile/{z}/{x}/{y}")
 def get_road_vector_tile(
@@ -352,7 +352,9 @@ def get_road_vector_tile(
 ):
     max_index = (1 << z) - 1
     if x > max_index or y > max_index:
-        raise HTTPException(status_code=400, detail="Tile x/y is out of range for zoom level")
+        raise HTTPException(
+            status_code=400, detail="Tile x/y is out of range for zoom level"
+        )
 
     tile_bytes = _fetch_road_tile(db, z, x, y)
     return Response(content=tile_bytes, media_type="application/vnd.mapbox-vector-tile")
