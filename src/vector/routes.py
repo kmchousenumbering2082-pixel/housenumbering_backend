@@ -1,19 +1,3 @@
-"""
-Vector Layer Routes Module
-
-REST API endpoints for vector layer and feature management:
-  - Layer CRUD operations with filtering, sorting, pagination
-  - Feature CRUD operations with geometry support
-  - GeoJSON and Shapefile upload with automatic parsing
-  - Geometry extraction and display
-
-Supports:
-  - Multiple geometry types (Point, LineString, Polygon)
-  - Bilingual layer names (English/Nepali)
-  - Public/private visibility control
-  - Map display toggles
-"""
-
 from typing import List, Optional
 import json
 
@@ -49,34 +33,32 @@ from src.vector.service import (
     get_feature,
     update_feature,
     delete_feature,
-    permanently_delete_feature,
-    restore_feature,
     get_layer_features_count,
     _get_username,
     upload_vector_file,
 )
 
-router = APIRouter(prefix="/vector", tags=["Vector Layers"])
+router = APIRouter(prefix="/api/v1/vector", tags=["Vector Layers"])
 
 
 def _geometry_to_string(geom) -> str | None:
     """Convert geometry object (WKBElement) to WKT string format."""
     if geom is None:
         return None
-    
+
     try:
         # Handle different geometry object types
-        
+
         # If it's a string already, return as-is
         if isinstance(geom, str):
             return geom
-        
+
         # If it's a Shapely geometry object with WKT
-        if hasattr(geom, 'wkt'):
+        if hasattr(geom, "wkt"):
             return geom.wkt
-        
+
         # If it's a WKBElement from GeoAlchemy2
-        if hasattr(geom, 'data'):
+        if hasattr(geom, "data"):
             try:
                 # Try to load as WKB binary
                 shapely_geom = wkb.loads(geom.data)
@@ -85,17 +67,21 @@ def _geometry_to_string(geom) -> str | None:
                 # If WKB parsing fails, try to convert the object directly to string
                 # This handles cases where geom might already be text-based
                 geom_str = str(geom)
-                if geom_str and geom_str.startswith(('POINT', 'LINESTRING', 'POLYGON', 'MULTI')):
+                if geom_str and geom_str.startswith(
+                    ("POINT", "LINESTRING", "POLYGON", "MULTI")
+                ):
                     return geom_str
                 raise e
-        
+
         # Last resort: convert to string
         geom_str = str(geom)
-        if geom_str and geom_str.startswith(('POINT', 'LINESTRING', 'POLYGON', 'MULTI')):
+        if geom_str and geom_str.startswith(
+            ("POINT", "LINESTRING", "POLYGON", "MULTI")
+        ):
             return geom_str
-        
+
         return None
-        
+
     except Exception as e:
         print(f"Warning: Failed to convert geometry: {e}")
         print(f"  Geometry type: {type(geom)}")
@@ -122,7 +108,7 @@ def _build_layer_response(layer) -> VectorLayerResponse:
                     timestamp=feat.timestamp,
                 )
             )
-    
+
     return VectorLayerResponse(
         id=layer.id,
         name_en=layer.name_en,
@@ -155,7 +141,9 @@ def _build_feature_response(feature) -> FeatureCollectionResponse:
         timestamp=feature.timestamp,
     )
 
+
 # ============ VECTOR LAYER ENDPOINTS ============
+
 
 @router.post("/layers", response_model=VectorLayerResponse, status_code=201)
 def create_layer(
@@ -168,7 +156,7 @@ def create_layer(
     return _build_layer_response(db_layer)
 
 
-@router.post("/layers-form", response_model=VectorLayerResponse, status_code=201)
+@router.post("/layers_form", response_model=VectorLayerResponse, status_code=201)
 def create_layer_form(
     name_en: str = Form(...),
     name_ne: str = Form(...),
@@ -185,14 +173,14 @@ def create_layer_form(
     # Convert string booleans to actual booleans
     is_public_bool = is_public.lower() in ("true", "1", "yes")
     display_on_map_bool = display_on_map.lower() in ("true", "1", "yes")
-    
+
     try:
         attr_data = {}
         if attr_data_json:
             attr_data = json.loads(attr_data_json)
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid attr_data JSON format")
-    
+
     layer_data = VectorLayerCreate(
         name_en=name_en,
         name_ne=name_ne,
@@ -201,15 +189,19 @@ def create_layer_form(
         label_value=label_value,
         is_public=is_public_bool,
         display_on_map=display_on_map_bool,
-        attr_data=attr_data
+        attr_data=attr_data,
     )
-    db_layer = create_vector_layer(db=db, layer_data=layer_data, user_id=current_user.id)
+    db_layer = create_vector_layer(
+        db=db, layer_data=layer_data, user_id=current_user.id
+    )
     return _build_layer_response(db_layer)
 
 
 @router.post("/upload", response_model=VectorUploadSummary, status_code=201)
 def upload_vector_file_endpoint(
-    file: UploadFile = File(..., description="GeoJSON (.geojson/.json) or Shapefile (.zip)"),
+    file: UploadFile = File(
+        ..., description="GeoJSON (.geojson/.json) or Shapefile (.zip)"
+    ),
     name_en: str = Form(..., description="Layer name in English"),
     name_ne: Optional[str] = Form(None, description="Layer name in Nepali"),
     is_public: str = Form("true", description="Make layer public"),
@@ -219,24 +211,24 @@ def upload_vector_file_endpoint(
 ):
     """
     Upload a vector file (GeoJSON or Shapefile) and create a vector layer.
-    
+
     **Supported Formats:**
     - `.geojson` or `.json`: GeoJSON FeatureCollection or Feature
     - `.zip`: Shapefile archive (must contain .shp, .shx, .dbf files)
-    
+
     **Parameters:**
     - `file`: Vector file to upload
     - `name_en`: Layer name in English (required)
     - `name_ne`: Layer name in Nepali (optional)
     - `is_public`: Whether layer is publicly accessible (default: true)
     - `display_on_map`: Display layer in map by default (default: true)
-    
+
     **Returns:** Layer ID, feature count, and upload status
     """
     # Convert string booleans to actual booleans
     is_public_bool = is_public.lower() in ("true", "1", "yes")
     display_on_map_bool = display_on_map.lower() in ("true", "1", "yes")
-    
+
     result = upload_vector_file(
         db=db,
         upload=file,
@@ -251,7 +243,9 @@ def upload_vector_file_endpoint(
 
 @router.post("/upload/", response_model=VectorUploadSummary, status_code=201)
 def upload_vector_file_endpoint_with_slash(
-    file: UploadFile = File(..., description="GeoJSON (.geojson/.json) or Shapefile (.zip)"),
+    file: UploadFile = File(
+        ..., description="GeoJSON (.geojson/.json) or Shapefile (.zip)"
+    ),
     name_en: str = Form(..., description="Layer name in English"),
     name_ne: Optional[str] = Form(None, description="Layer name in Nepali"),
     is_public: str = Form("true", description="Make layer public"),
@@ -262,7 +256,7 @@ def upload_vector_file_endpoint_with_slash(
     """Same as /upload but accepts trailing slash"""
     is_public_bool = is_public.lower() in ("true", "1", "yes")
     display_on_map_bool = display_on_map.lower() in ("true", "1", "yes")
-    
+
     result = upload_vector_file(
         db=db,
         upload=file,
@@ -278,17 +272,23 @@ def upload_vector_file_endpoint_with_slash(
 @router.get("/layers", response_model=List[VectorLayerResponse])
 def list_layers(
     pagination: Pagination = Depends(),
-    layer_type: Optional[str] = Query(None, description="Filter by layer type: polygon, line, point"),
+    layer_type: Optional[str] = Query(
+        None, description="Filter by layer type: polygon, line, point"
+    ),
     is_public: Optional[bool] = Query(None, description="Filter by public status"),
-    display_on_map: Optional[bool] = Query(None, description="Filter by map display status"),
-    search: Optional[str] = Query(None, description="Search by name in English or Nepali"),
+    display_on_map: Optional[bool] = Query(
+        None, description="Filter by map display status"
+    ),
+    search: Optional[str] = Query(
+        None, description="Search by name in English or Nepali"
+    ),
     sort_by: str = Query("id", description="Sort by field"),
     order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order"),
     db: Session = Depends(get_db),
 ):
     """
     List all vector layers with filtering, pagination and sorting.
-    
+
     **Filter Parameters:**
     - `layer_type`: polygon, line, or point
     - `is_public`: true or false
@@ -314,12 +314,15 @@ def list_layers(
 @router.get("/layers/{layer_id}", response_model=VectorLayerDetailResponse)
 def get_layer(
     layer_id: int,
-    has_geometry: Optional[bool] = Query(None, description="Filter by geometry presence: true=has geometry, false=no geometry, null=all"),
+    has_geometry: Optional[bool] = Query(
+        None,
+        description="Filter by geometry presence: true=has geometry, false=no geometry, null=all",
+    ),
     db: Session = Depends(get_db),
 ):
     """
     Get a specific vector layer with all its features.
-    
+
     **Parameters:**
     - `has_geometry`: Optional filter
       - `true`: Only features WITH geometry (mappable)
@@ -327,12 +330,14 @@ def get_layer(
       - `null` (default): All features
     """
     db_layer = get_vector_layer(db=db, layer_id=layer_id)
-    
+
     # Filter features if requested
     if has_geometry is not None:
-        filtered_features = [f for f in db_layer.features if (f.geom is not None) == has_geometry]
+        filtered_features = [
+            f for f in db_layer.features if (f.geom is not None) == has_geometry
+        ]
         db_layer.features = filtered_features
-    
+
     return _build_layer_response(db_layer)
 
 
@@ -344,7 +349,9 @@ def update_layer(
     db: Session = Depends(get_db),
 ):
     """Update a vector layer."""
-    db_layer = update_vector_layer(db=db, layer_id=layer_id, layer_data=layer, user_id=current_user.id)
+    db_layer = update_vector_layer(
+        db=db, layer_id=layer_id, layer_data=layer, user_id=current_user.id
+    )
     return _build_layer_response(db_layer)
 
 
@@ -365,10 +372,14 @@ def get_features_count(
     db: Session = Depends(get_db),
 ):
     """Get count of active features in a layer."""
-    return {"layer_id": layer_id, "feature_count": get_layer_features_count(db=db, layer_id=layer_id)}
+    return {
+        "layer_id": layer_id,
+        "feature_count": get_layer_features_count(db=db, layer_id=layer_id),
+    }
 
 
 # ============ FEATURE COLLECTION ENDPOINTS ============
+
 
 @router.post("/features", response_model=FeatureCollectionResponse, status_code=201)
 def create_feature_endpoint(
@@ -381,10 +392,14 @@ def create_feature_endpoint(
     return _build_feature_response(db_feature)
 
 
-@router.post("/features-form", response_model=FeatureCollectionResponse, status_code=201)
+@router.post(
+    "/features_form", response_model=FeatureCollectionResponse, status_code=201
+)
 def create_feature_form(
     vector_layer_id: int = Form(...),
-    geom: Optional[str] = Form(None, description="Geometry in WKT format (e.g., 'POINT(85.3 27.7)')"),
+    geom: Optional[str] = Form(
+        None, description="Geometry in WKT format (e.g., 'POINT(85.3 27.7)')"
+    ),
     style_value: Optional[str] = Form(None),
     label_value: Optional[str] = Form(None),
     attr_data_json: Optional[str] = Form(None),
@@ -393,12 +408,12 @@ def create_feature_form(
 ):
     """
     Create a new feature (form-data).
-    
+
     **Parameters:**
     - `vector_layer_id`: Vector layer ID (required)
     - `geom`: Geometry in WKT format (e.g., 'POINT(85.3 27.7)', 'POLYGON(...)')
     - `attr_data_json`: Feature attributes as JSON string
-    
+
     **Without geometry, features won't be mappable in the frontend!**
     """
     try:
@@ -407,22 +422,26 @@ def create_feature_form(
             attr_data = json.loads(attr_data_json)
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid attr_data JSON format")
-    
+
     feature_data = FeatureCollectionCreate(
         vector_layer_id=vector_layer_id,
         geom=geom,
         style_value=style_value,
         label_value=label_value,
-        attr_data=attr_data
+        attr_data=attr_data,
     )
-    db_feature = create_feature(db=db, feature_data=feature_data, user_id=current_user.id)
+    db_feature = create_feature(
+        db=db, feature_data=feature_data, user_id=current_user.id
+    )
     return _build_feature_response(db_feature)
 
 
 @router.get("/features", response_model=List[FeatureCollectionListResponse])
 def list_features_endpoint(
     pagination: Pagination = Depends(),
-    vector_layer_id: Optional[int] = Query(None, description="Filter by vector layer ID"),
+    vector_layer_id: Optional[int] = Query(
+        None, description="Filter by vector layer ID"
+    ),
     is_deleted: Optional[bool] = Query(None, description="Include deleted features"),
     search: Optional[str] = Query(None, description="Search by label or style value"),
     sort_by: str = Query("id", description="Sort by field"),
@@ -431,7 +450,7 @@ def list_features_endpoint(
 ):
     """
     List features with filtering, pagination and sorting.
-    
+
     **Filter Parameters:**
     - `vector_layer_id`: Filter by specific layer
     - `is_deleted`: Include deleted features (null = exclude deleted)
@@ -470,30 +489,37 @@ def update_feature_endpoint(
     db: Session = Depends(get_db),
 ):
     """Update a feature (partial update via JSON)."""
-    db_feature = update_feature(db=db, feature_id=feature_id, feature_data=feature, user_id=current_user.id)
+    db_feature = update_feature(
+        db=db, feature_id=feature_id, feature_data=feature, user_id=current_user.id
+    )
     return _build_feature_response(db_feature)
 
 
-@router.patch("/features/{feature_id}/geometry", response_model=FeatureCollectionResponse)
+@router.patch(
+    "/features/{feature_id}/geometry", response_model=FeatureCollectionResponse
+)
 def update_feature_geometry(
     feature_id: int,
-    geom: str = Form(..., description="Geometry in WKT format (e.g., 'POINT(85.3 27.7)')"),
+    geom: str = Form(
+        ..., description="Geometry in WKT format (e.g., 'POINT(85.3 27.7)')"
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Add or update geometry for an existing feature.
-    
+
     **Use this to:**
     - Add geometry to features created without it
     - Update an existing feature's geometry
-    
+
     **Example:** `POINT(85.3240 27.7172)`
     """
     feature_data = FeatureCollectionUpdate(geom=geom)
-    db_feature = update_feature(db=db, feature_id=feature_id, feature_data=feature_data, user_id=current_user.id)
+    db_feature = update_feature(
+        db=db, feature_id=feature_id, feature_data=feature_data, user_id=current_user.id
+    )
     return _build_feature_response(db_feature)
-
 
 
 @router.delete("/features/{feature_id}", status_code=204)

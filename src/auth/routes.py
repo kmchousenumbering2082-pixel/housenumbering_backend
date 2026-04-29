@@ -11,7 +11,7 @@ from src.users.models import User
 from src.users.service import hash_password, verify_password
 from src.utils.email import send_forgot_password_email
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
 
 def _build_token_response(
@@ -114,7 +114,7 @@ def delete_user(user=Depends(get_current_user), db: Session = Depends(get_db)):
     return {"message": "User account has been deleted successfully"}
 
 
-@router.get("/email-activate/{uid}/{token}")
+@router.get("/email_activate/{uid}/{token}")
 def activate_email(uid: str, token: str, db: Session = Depends(get_db)):
     """Activate user email via activation link from email."""
     try:
@@ -141,7 +141,7 @@ def activate_email(uid: str, token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Activation failed: {str(e)}")
 
 
-@router.post("/forgot-password")
+@router.post("/forgot_password")
 async def forgot_password(request: Request, db: Session = Depends(get_db)):
     """Send password reset email to user."""
     form = await request.form()
@@ -170,17 +170,17 @@ async def forgot_password(request: Request, db: Session = Depends(get_db)):
         )
 
         if email_sent:
-            print(f"✅ Password reset email sent to {user.email}")
+            print(f"Password reset email sent to {user.email}")
         else:
-            print(f"⚠️  Failed to send password reset email to {user.email}")
+            print(f"Failed to send password reset email to {user.email}")
 
     except Exception as e:
-        print(f"❌ Error sending password reset email: {str(e)}")
+        print(f"Error sending password reset email: {str(e)}")
 
     return {"message": "If email exists, password reset link has been sent"}
 
 
-@router.get("/reset-password/{uid}/{token}", response_class=HTMLResponse)
+@router.get("/reset_password/{uid}/{token}", response_class=HTMLResponse)
 async def show_reset_password_form(uid: str, token: str, db: Session = Depends(get_db)):
     """Show password reset form."""
     try:
@@ -203,7 +203,7 @@ async def show_reset_password_form(uid: str, token: str, db: Session = Depends(g
         raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
 
 
-@router.post("/reset-password/{uid}/{token}")
+@router.post("/reset_password/{uid}/{token}")
 async def reset_password(
     uid: str, token: str, request: Request, db: Session = Depends(get_db)
 ):
@@ -247,11 +247,11 @@ async def reset_password(
         raise HTTPException(status_code=400, detail=f"Password reset failed: {str(e)}")
 
 
-@router.post("/change-password")
+@router.post("/change_password")
 async def change_password(
-    request: Request, 
+    request: Request,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Change password for authenticated user."""
     form = await request.form()
@@ -262,7 +262,7 @@ async def change_password(
     # Validate inputs
     if not old_password:
         raise HTTPException(status_code=422, detail="old_password is required")
-    
+
     if not new_password:
         raise HTTPException(status_code=422, detail="new_password is required")
 
@@ -270,7 +270,9 @@ async def change_password(
         raise HTTPException(status_code=422, detail="passwords do not match")
 
     if len(new_password) < 6:
-        raise HTTPException(status_code=422, detail="password must be at least 6 characters")
+        raise HTTPException(
+            status_code=422, detail="password must be at least 6 characters"
+        )
 
     # Verify old password is correct
     if not verify_password(old_password, user.password):

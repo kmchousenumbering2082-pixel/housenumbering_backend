@@ -29,9 +29,8 @@ from src.raster.schema import (
     BaseLayerUpdate,
 )
 
-
-router = APIRouter(prefix="/api/v1/rasters", tags=["Rasters"])
-base_layer = APIRouter(prefix="/api/v1/base-layers", tags=["Base Layers"])
+router = APIRouter(prefix="/api/v1/raster", tags=["Rasters"])
+base_layer = APIRouter(prefix="/api/v1/base_layers", tags=["Base Layers"])
 
 
 # ============================================================================
@@ -253,8 +252,7 @@ def delete_base_layer(
 # VECTOR TILE ENDPOINTS
 # =============================================================================
 
-_BUILDING_MVT_SQL = text(
-    """
+_BUILDING_MVT_SQL = text("""
     WITH bounds AS (
         SELECT ST_TileEnvelope(:z, :x, :y) AS geom
     ),
@@ -279,11 +277,9 @@ _BUILDING_MVT_SQL = text(
     )
     SELECT COALESCE(ST_AsMVT(tile_features, 'buildings', 4096, 'geom'), '\\x'::bytea) AS tile
     FROM tile_features
-    """
-)
+    """)
 
-_ROAD_MVT_SQL = text(
-    """
+_ROAD_MVT_SQL = text("""
     WITH bounds AS (
         SELECT ST_TileEnvelope(:z, :x, :y) AS geom
     ),
@@ -308,8 +304,7 @@ _ROAD_MVT_SQL = text(
     )
     SELECT COALESCE(ST_AsMVT(tile_features, 'roads', 4096, 'geom'), '\\x'::bytea) AS tile
     FROM tile_features
-    """
-)
+    """)
 
 
 def _fetch_building_tile(db: Session, z: int, x: int, y: int) -> bytes:
@@ -326,7 +321,7 @@ def _fetch_road_tile(db: Session, z: int, x: int, y: int) -> bytes:
     return bytes(result)
 
 
-@router.get("/building-vector-tile/{z}/{x}/{y}")
+@router.get("/building_vector_tile/{z}/{x}/{y}")
 def get_building_vector_tile(
     z: int = Path(..., ge=0, le=22),
     x: int = Path(..., ge=0),
@@ -343,7 +338,7 @@ def get_building_vector_tile(
     return Response(content=tile_bytes, media_type="application/vnd.mapbox-vector-tile")
 
 
-@router.get("/road-vector-tile/{z}/{x}/{y}")
+@router.get("/road_vector_tile/{z}/{x}/{y}")
 def get_road_vector_tile(
     z: int = Path(..., ge=0, le=22),
     x: int = Path(..., ge=0),

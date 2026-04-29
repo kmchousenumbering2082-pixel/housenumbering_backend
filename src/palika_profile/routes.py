@@ -12,34 +12,36 @@ from src.auth.dependencies import get_current_user
 from src.database import get_db
 
 from src.palika_profile.schema import (
-	PalikaGeometryResponse,
-	PalikaGeometryUploadSummary,
-	PalikaProfileCreate,
-	PalikaProfileResponse,
-	PalikaProfileUpdate,
-	PalikaWardGeometryResponse,
-	PalikaWardGeometryUploadSummary,
+    PalikaGeometryResponse,
+    PalikaGeometryUploadSummary,
+    PalikaProfileCreate,
+    PalikaProfileResponse,
+    PalikaProfileUpdate,
+    PalikaWardGeometryResponse,
+    PalikaWardGeometryUploadSummary,
 )
 from src.palika_profile import service as palika_service
 
-router = APIRouter(prefix="/palika_profile", tags=["palika_profile"])
+router = APIRouter(prefix="/api/v1/palika_profile", tags=["palika_profile"])
 
 PROFILE_LOGO_DIR = Path("media") / "palika_profile" / "logos"
 
 
 def _save_profile_logo(upload: UploadFile, field_name: str) -> str:
-	if not upload.filename:
-		raise HTTPException(status_code=422, detail=f"{field_name} file must have a filename")
+    if not upload.filename:
+        raise HTTPException(
+            status_code=422, detail=f"{field_name} file must have a filename"
+        )
 
-	PROFILE_LOGO_DIR.mkdir(parents=True, exist_ok=True)
-	suffix = Path(upload.filename).suffix.lower()
-	safe_name = f"{field_name}_{uuid.uuid4().hex}{suffix}"
-	destination = PROFILE_LOGO_DIR / safe_name
+    PROFILE_LOGO_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = Path(upload.filename).suffix.lower()
+    safe_name = f"{field_name}_{uuid.uuid4().hex}{suffix}"
+    destination = PROFILE_LOGO_DIR / safe_name
 
-	with destination.open("wb") as buffer:
-		shutil.copyfileobj(upload.file, buffer)
+    with destination.open("wb") as buffer:
+        shutil.copyfileobj(upload.file, buffer)
 
-	return str(destination).replace("\\", "/")
+    return str(destination).replace("\\", "/")
 
 
 def _is_upload_file(value: object) -> bool:
@@ -50,7 +52,10 @@ async def _parse_profile_payload(request: Request) -> dict:
     content_type = request.headers.get("content-type", "").lower()
 
     # Support both JSON payloads and multipart form-data from tools like Postman.
-    if "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+    if (
+        "multipart/form-data" in content_type
+        or "application/x-www-form-urlencoded" in content_type
+    ):
         form = await request.form()
         payload = {str(key).strip(): value for key, value in form.items()}
     else:
@@ -60,7 +65,9 @@ async def _parse_profile_payload(request: Request) -> dict:
             raise HTTPException(status_code=422, detail="Invalid request body") from exc
 
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=422, detail="Payload must be a JSON object or form fields")
+        raise HTTPException(
+            status_code=422, detail="Payload must be a JSON object or form fields"
+        )
 
     # Persist uploaded logo files and replace the payload value with a string path.
     for field_name in ("logo_en", "logo_ne"):
@@ -72,7 +79,9 @@ async def _parse_profile_payload(request: Request) -> dict:
         try:
             payload["important_links"] = json.loads(important_links)
         except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=422, detail="important_links must be valid JSON") from exc
+            raise HTTPException(
+                status_code=422, detail="important_links must be valid JSON"
+            ) from exc
 
     return payload
 
@@ -105,7 +114,9 @@ async def update_palika_profile(
     db: Session = Depends(get_db),
 ):
     payload = PalikaProfileUpdate(**(await _parse_profile_payload(request)))
-    return palika_service.update_palika_profile(db=db, profile_id=profile_id, payload=payload)
+    return palika_service.update_palika_profile(
+        db=db, profile_id=profile_id, payload=payload
+    )
 
 
 @router.post("/geometry_files/upload", response_model=PalikaGeometryUploadSummary)

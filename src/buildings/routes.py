@@ -18,7 +18,7 @@ from src.buildings.service import (
     update_building,
 )
 
-router = APIRouter(prefix="/buildings", tags=["buildings"])
+router = APIRouter(prefix="/api/v1/building", tags=["buildings"])
 
 
 @router.post("/", response_model=BuildingResponse)
@@ -91,7 +91,7 @@ def delete_building_route(
     return {"detail": "Building deleted"}
 
 
-@router.post("/assign-road")
+@router.post("/assign_road")
 def assign_building_roads(
     distance_limit: int = 100,
     db: Session = Depends(get_db),

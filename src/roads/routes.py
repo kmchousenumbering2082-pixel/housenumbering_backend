@@ -9,9 +9,15 @@ from src.enums.roads import RoadCategory, RoadClass, RoadLane, RoadType
 from src.pagination import Pagination
 
 from src.roads.schema import RoadCreate, RoadResponse, RoadUpdate
-from src.roads.service import create_road, delete_road, get_road, list_roads, update_road
+from src.roads.service import (
+    create_road,
+    delete_road,
+    get_road,
+    list_roads,
+    update_road,
+)
 
-router = APIRouter(prefix="/roads", tags=["roads"])
+router = APIRouter(prefix="/api/v1/road", tags=["roads"])
 
 
 @router.post("/", response_model=RoadResponse)
