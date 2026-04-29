@@ -1,5 +1,6 @@
 """ProjectMedia CRUD API Routes"""
 
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, File, UploadFile, Form, HTTPException
 from sqlalchemy.orm import Session
@@ -18,29 +19,73 @@ from src.vectortile.media_service import (
     delete_project_media,
     search_project_media,
 )
+from src.vectortile.config import (
+    MEDIA_DIR,
+    MEDIA_DIR_STR,
+    MAX_FILE_SIZE,
+    ALLOWED_EXTENSIONS,
+    MISSING_FILENAME,
+    INVALID_FILE_SIZE,
+    INVALID_EXTENSION,
+)
 
 router = APIRouter(prefix="/api/v1/project_media", tags=["Project Media"])
-
-MEDIA_DIR = Path("media")
+logger = logging.getLogger(__name__)
 
 
 def _save_upload_file(upload: UploadFile) -> str:
-    """Save uploaded file and return file path."""
+    """
+    Save uploaded file with validation.
 
+    Args:
+        upload: UploadFile instance
+
+    Returns:
+        str: Relative file path (e.g., "media/uuid.pdf")
+
+    Raises:
+        HTTPException: If file validation fails
+    """
+    # Validate filename
     if not upload.filename:
-        raise HTTPException(status_code=422, detail="Filename is missing")
+        logger.warning("Upload attempted without filename")
+        raise HTTPException(status_code=422, detail=MISSING_FILENAME)
 
+    # Validate extension
+    file_ext = Path(upload.filename).suffix.lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        logger.warning(f"Invalid extension attempted: {file_ext}")
+        raise HTTPException(status_code=400, detail=INVALID_EXTENSION)
+
+    # Validate file size
+    upload.file.seek(0, 2)  # Seek to end
+    file_size = upload.file.tell()
+    upload.file.seek(0)  # Reset to start
+
+    if file_size > MAX_FILE_SIZE:
+        logger.warning(f"File size exceeds limit: {file_size} > {MAX_FILE_SIZE}")
+        raise HTTPException(status_code=413, detail=INVALID_FILE_SIZE)
+
+    # Create directory if needed
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
-    suffix = Path(upload.filename).suffix.lower()
-    safe_name = f"{uuid.uuid4().hex}{suffix}"
-
+    # Generate unique safe filename
+    safe_name = f"{uuid.uuid4().hex}{file_ext}"
     destination = MEDIA_DIR / safe_name
 
-    with open(destination, "wb") as buffer:
-        shutil.copyfileobj(upload.file, buffer)
+    try:
+        # Save file to disk
+        with destination.open("wb") as buffer:
+            shutil.copyfileobj(upload.file, buffer)
 
-    return str(destination).replace("\\", "/")
+        logger.info(f"File saved successfully: {safe_name}")
+        return str(destination).replace("\\", "/")
+
+    except Exception as e:
+        logger.error(f"Failed to save file {safe_name}: {str(e)}")
+        # Cleanup on failure
+        destination.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Failed to save file")
 
 
 @router.post("/upload", response_model=ProjectMediaResponse)
@@ -50,16 +95,29 @@ def upload_project_media(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Upload a project media file with optional name."""
+    if not file:
+        raise HTTPException(status_code=400, detail="File is required")
+
     file_path = _save_upload_file(file)
 
-    media = create_project_media(
-        db=db,
-        file_path=file_path,
-        user_id=current_user.id if current_user else None,
-        name=name,
-    )
+    try:
+        media = create_project_media(
+            db=db,
+            file_path=file_path,
+            user_id=current_user.id if current_user else None,
+            name=name,
+        )
+        logger.info(
+            f"Media created: id={media.id}, user={current_user.id if current_user else None}"
+        )
+        return media
 
-    return media
+    except Exception as e:
+        # Cleanup file if database operation fails
+        logger.error(f"Failed to create media record: {str(e)}")
+        Path(file_path).unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Failed to process upload")
 
 
 @router.get("", response_model=dict)
@@ -69,6 +127,7 @@ def list_media(
     db: Session = Depends(get_db),
 ):
     """Get all project media files (name -> file_path mapping)."""
+    logger.debug(f"Listing media: skip={skip}, limit={limit}")
     return list_project_media(db, skip=skip, limit=limit)
 
 
@@ -78,6 +137,7 @@ def get_media(
     db: Session = Depends(get_db),
 ):
     """Get a specific project media by ID."""
+    logger.debug(f"Fetching media: id={media_id}")
     return get_project_media_by_id(db, media_id)
 
 
@@ -88,11 +148,13 @@ def search_media(
     limit: int = 100,
     db: Session = Depends(get_db),
 ):
-    """Search project media by name."""
+    """Search project media by name or file path."""
     if not q or len(q) < 2:
+        logger.warning(f"Invalid search query: '{q}'")
         raise HTTPException(
             status_code=400, detail="Search query must be at least 2 characters"
         )
+    logger.debug(f"Searching media: query='{q}', skip={skip}, limit={limit}")
     return search_project_media(db, q, skip=skip, limit=limit)
 
 
@@ -104,6 +166,9 @@ def update_media(
     db: Session = Depends(get_db),
 ):
     """Update project media details."""
+    logger.info(
+        f"Updating media: id={media_id}, user={current_user.id if current_user else None}"
+    )
     return update_project_media(db, media_id, payload)
 
 
@@ -114,5 +179,8 @@ def delete_media(
     db: Session = Depends(get_db),
 ):
     """Delete (soft delete) a project media."""
+    logger.info(
+        f"Deleting media: id={media_id}, user={current_user.id if current_user else None}"
+    )
     delete_project_media(db, media_id)
     return {"message": "Project media deleted successfully"}
