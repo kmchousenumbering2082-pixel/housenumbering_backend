@@ -17,6 +17,7 @@ from src.raster.schema import (
     BaseLayerNameUpdate,
 )
 from src.models import RasterLayer, RasterLayerMetadata, BaseLayer, BaseLayerName
+
 RASTER_UPLOAD_ROOT = Path("media") / "raster"
 VALID_RASTER_EXTENSIONS = {".tif", ".tiff", ".geotiff", ".ecw", ".vrt", ".jp2", ".jp2k"}
 
@@ -29,13 +30,13 @@ def _bad_request(detail: str) -> HTTPException:
 def _save_raster_file(upload: UploadFile) -> tuple[Path, str]:
     """
     Save the uploaded raster file to the media directory.
-    
+
     Args:
         upload: The uploaded file object
-        
+
     Returns:
         Tuple of (destination_path, relative_path)
-        
+
     Raises:
         HTTPException: If file validation fails
     """
@@ -69,22 +70,21 @@ def _save_raster_file(upload: UploadFile) -> tuple[Path, str]:
 def _extract_raster_metadata(file_path: Path) -> dict:
     """
     Extract metadata from a raster file using GDAL.
-    
+
     Args:
         file_path: Path to the raster file
-        
+
     Returns:
         Dictionary containing raster metadata
-        
+
     Raises:
         HTTPException: If metadata extraction fails
     """
     try:
-        
-        
+
         # Suppress GDAL warnings
         gdal.UseExceptions()
-        
+
         dataset = gdal.Open(str(file_path), gdalconst.GA_ReadOnly)
         if dataset is None:
             raise _bad_request(f"Failed to open raster file: {file_path}")
@@ -98,7 +98,7 @@ def _extract_raster_metadata(file_path: Path) -> dict:
         # Get spatial reference (SRID)
         projection = dataset.GetProjection()
         if projection:
-            
+
             spatialref = osr.SpatialReference(wkt=projection)
             srid = spatialref.GetAttrValue("AUTHORITY", 1)
             if srid:
@@ -115,7 +115,11 @@ def _extract_raster_metadata(file_path: Path) -> dict:
             minx = miny = maxx = maxy = 0
 
         # Get extent as dictionary
-        extent = {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy} if geotransform else None
+        extent = (
+            {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy}
+            if geotransform
+            else None
+        )
 
         # Calculate pixel size
         pixel_size = abs(geotransform[1]) if geotransform else 0
@@ -174,13 +178,13 @@ def create_raster_layer(
 ) -> dict:
     """
     Create a new raster layer with uploaded file.
-    
+
     Args:
         db: Database session
         upload: Uploaded raster file
         payload: Raster layer creation payload
         user_id: ID of user creating the layer
-        
+
     Returns:
         Dictionary with raster layer details and metadata
     """
@@ -199,15 +203,19 @@ def create_raster_layer(
         display_on_map=payload.display_on_map,
         is_public=payload.is_public,
         status="completed",
-        bbox={
-            "minx": metadata_dict["minx"],
-            "miny": metadata_dict["miny"],
-            "maxx": metadata_dict["maxx"],
-            "maxy": metadata_dict["maxy"],
-        } if metadata_dict["extent"] else None,
+        bbox=(
+            {
+                "minx": metadata_dict["minx"],
+                "miny": metadata_dict["miny"],
+                "maxx": metadata_dict["maxx"],
+                "maxy": metadata_dict["maxy"],
+            }
+            if metadata_dict["extent"]
+            else None
+        ),
         created_by=user_id,
     )
-    
+
     db.add(raster_layer)
     db.flush()  # Get the ID without committing
 
@@ -217,7 +225,7 @@ def create_raster_layer(
         file_name=upload.filename,
         **metadata_dict,
     )
-    
+
     db.add(metadata)
     db.commit()
     db.refresh(raster_layer)
@@ -236,10 +244,13 @@ def create_raster_layer(
 
 def get_raster_layer(db: Session, raster_id: int) -> RasterLayer:
     """Get a raster layer by ID with relationships."""
-    
-    raster = db.query(RasterLayer).options(
-        joinedload(RasterLayer.raster_metadata)
-    ).filter(RasterLayer.id == raster_id).first()
+
+    raster = (
+        db.query(RasterLayer)
+        .options(joinedload(RasterLayer.raster_metadata))
+        .filter(RasterLayer.id == raster_id)
+        .first()
+    )
     if not raster:
         raise _bad_request(f"Raster layer with ID {raster_id} not found")
     return raster
@@ -252,12 +263,12 @@ def list_raster_layers(
     is_public: bool = True,
 ) -> list[RasterLayer]:
     """List raster layers with pagination."""
-    
+
     query = db.query(RasterLayer).options(joinedload(RasterLayer.raster_metadata))
-    
+
     if is_public:
         query = query.filter(RasterLayer.is_public == True)
-    
+
     return query.offset(skip).limit(limit).all()
 
 
@@ -268,11 +279,11 @@ def update_raster_layer(
 ) -> RasterLayer:
     """Update a raster layer."""
     raster = get_raster_layer(db, raster_id)
-    
+
     update_data = payload.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(raster, field, value)
-    
+
     db.commit()
     db.refresh(raster)
     return raster
@@ -281,7 +292,7 @@ def update_raster_layer(
 def delete_raster_layer(db: Session, raster_id: int) -> None:
     """Delete a raster layer and its file."""
     raster = get_raster_layer(db, raster_id)
-    
+
     # Delete the file from disk
     if raster.raster_file:
         file_path = Path(raster.raster_file)
@@ -291,13 +302,14 @@ def delete_raster_layer(db: Session, raster_id: int) -> None:
         except OSError as exc:
             # Log error but don't fail the deletion
             print(f"Failed to delete raster file: {exc}")
-    
+
     # Delete from database (cascade will handle metadata)
     db.delete(raster)
     db.commit()
 
 
 # BaseLayer functions
+
 
 def create_base_layer(
     db: Session,
@@ -313,7 +325,7 @@ def create_base_layer(
         is_active=payload.is_active,
         created_by=user_id,
     )
-    
+
     db.add(base_layer)
     db.commit()
     db.refresh(base_layer)
@@ -340,11 +352,11 @@ def update_base_layer(
 ) -> BaseLayer:
     """Update a base layer."""
     layer = get_base_layer(db, layer_id)
-    
+
     update_data = payload.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(layer, field, value)
-    
+
     db.commit()
     db.refresh(layer)
     return layer
@@ -359,6 +371,7 @@ def delete_base_layer(db: Session, layer_id: int) -> None:
 
 # BaseLayerName functions
 
+
 def create_base_layer_name(
     db: Session,
     payload: BaseLayerNameCreate,
@@ -366,7 +379,7 @@ def create_base_layer_name(
     """Create a new base layer name."""
     # Verify base layer exists
     get_base_layer(db, payload.base_layer_id)
-    
+
     layer_name = BaseLayerName(
         base_layer_id=payload.base_layer_id,
         name=payload.name,
@@ -375,17 +388,24 @@ def create_base_layer_name(
         order=payload.order,
         is_visible=payload.is_visible,
     )
-    
+
     db.add(layer_name)
     db.commit()
     db.refresh(layer_name)
     return layer_name
 
 
+def list_all_base_layer_names(db: Session) -> list[BaseLayerName]:
+    """Get all base layer names across all layers."""
+    return (
+        db.query(BaseLayerName)
+        .order_by(BaseLayerName.base_layer_id, BaseLayerName.order)
+        .all()
+    )
+
+
 def get_base_layer_names(db: Session, layer_id: int) -> list[BaseLayerName]:
-    """Get all names for a base layer."""
-    get_base_layer(db, layer_id)  # Verify layer exists
-    
+    """Get all names for a specific base layer."""
     return (
         db.query(BaseLayerName)
         .filter(BaseLayerName.base_layer_id == layer_id)
@@ -403,11 +423,11 @@ def update_base_layer_name(
     layer_name = db.query(BaseLayerName).filter(BaseLayerName.id == name_id).first()
     if not layer_name:
         raise _bad_request(f"Base layer name with ID {name_id} not found")
-    
+
     update_data = payload.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(layer_name, field, value)
-    
+
     db.commit()
     db.refresh(layer_name)
     return layer_name
@@ -418,6 +438,6 @@ def delete_base_layer_name(db: Session, name_id: int) -> None:
     layer_name = db.query(BaseLayerName).filter(BaseLayerName.id == name_id).first()
     if not layer_name:
         raise _bad_request(f"Base layer name with ID {name_id} not found")
-    
+
     db.delete(layer_name)
     db.commit()

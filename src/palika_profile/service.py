@@ -368,3 +368,13 @@ def get_palika_ward_geometry_by_ward(db: Session, ward_no: int) -> dict:
     if not row:
         raise HTTPException(status_code=404, detail="Palika ward geometry not found")
     return _ward_geometry_to_dict(row)
+
+
+def get_unique_ward_numbers(db: Session) -> list[int]:
+    ward_numbers = (
+        db.query(PalikaWardGeometry.ward_no)
+        .order_by(PalikaWardGeometry.ward_no.asc())
+        .distinct()
+        .all()
+    )
+    return [ward[0] for ward in ward_numbers]

@@ -162,3 +162,8 @@ def list_palika_ward_geometries(
 @router.get("/ward_geometries/{ward_no}", response_model=PalikaWardGeometryResponse)
 def get_palika_ward_geometry(ward_no: int, db: Session = Depends(get_db)):
     return palika_service.get_palika_ward_geometry_by_ward(db=db, ward_no=ward_no)
+
+
+@router.get("/ward_numbers", response_model=List[int])
+def get_unique_ward_numbers(db: Session = Depends(get_db)):
+    return palika_service.get_unique_ward_numbers(db=db)

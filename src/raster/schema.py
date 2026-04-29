@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 class RasterLayerMetadataBase(BaseModel):
     """Base schema for raster layer metadata."""
+
     width: Optional[int] = None
     height: Optional[int] = None
     numbands: Optional[int] = None
@@ -23,6 +24,7 @@ class RasterLayerMetadataBase(BaseModel):
 
 class RasterLayerMetadataResponse(RasterLayerMetadataBase):
     """Response schema for raster layer metadata."""
+
     id: int
     raster_layer_id: int
     timestamp: Optional[datetime] = None
@@ -33,6 +35,7 @@ class RasterLayerMetadataResponse(RasterLayerMetadataBase):
 
 class RasterLayerBase(BaseModel):
     """Base schema for raster layer."""
+
     name_en: Optional[str] = None
     name_ne: Optional[str] = None
     attr_data: Optional[dict[str, Any]] = None
@@ -42,16 +45,19 @@ class RasterLayerBase(BaseModel):
 
 class RasterLayerCreate(RasterLayerBase):
     """Schema for creating a raster layer."""
+
     pass
 
 
 class RasterLayerUpdate(RasterLayerBase):
     """Schema for updating a raster layer."""
+
     status: Optional[str] = None
 
 
 class RasterLayerResponse(RasterLayerBase):
     """Response schema for raster layer with metadata."""
+
     id: int
     raster_file: str
     sld_file: Optional[str] = None
@@ -66,6 +72,7 @@ class RasterLayerResponse(RasterLayerBase):
 
 class RasterUploadSummary(BaseModel):
     """Summary response for raster file upload."""
+
     raster_id: int
     file_name: str
     status: str
@@ -78,6 +85,7 @@ class RasterUploadSummary(BaseModel):
 
 class BaseLayerBase(BaseModel):
     """Base schema for base layer."""
+
     name: Optional[str] = None
     layer_type: str
     url: Optional[str] = None
@@ -87,16 +95,20 @@ class BaseLayerBase(BaseModel):
 
 class BaseLayerCreate(BaseLayerBase):
     """Schema for creating a base layer."""
+
+    name: str  # Required for creation
     pass
 
 
 class BaseLayerUpdate(BaseLayerBase):
     """Schema for updating a base layer."""
+
     pass
 
 
 class BaseLayerNameBase(BaseModel):
     """Base schema for base layer name."""
+
     name: str
     label_en: Optional[str] = None
     label_ne: Optional[str] = None
@@ -106,16 +118,19 @@ class BaseLayerNameBase(BaseModel):
 
 class BaseLayerNameCreate(BaseLayerNameBase):
     """Schema for creating a base layer name."""
+
     base_layer_id: int
 
 
 class BaseLayerNameUpdate(BaseLayerNameBase):
     """Schema for updating a base layer name."""
+
     pass
 
 
 class BaseLayerNameResponse(BaseLayerNameBase):
     """Response schema for base layer name."""
+
     id: int
     base_layer_id: int
     timestamp: Optional[datetime] = None
@@ -126,6 +141,7 @@ class BaseLayerNameResponse(BaseLayerNameBase):
 
 class BaseLayerResponse(BaseLayerBase):
     """Response schema for base layer."""
+
     id: int
     timestamp: Optional[datetime] = None
 
@@ -135,6 +151,7 @@ class BaseLayerResponse(BaseLayerBase):
 
 class BaseLayerWithNamesResponse(BaseLayerResponse):
     """Response schema for base layer with its names."""
+
     names: list[BaseLayerNameResponse] = []
 
     class Config:

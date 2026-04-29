@@ -27,6 +27,9 @@ from src.raster.schema import (
     BaseLayerCreate,
     BaseLayerResponse,
     BaseLayerUpdate,
+    BaseLayerNameCreate,
+    BaseLayerNameResponse,
+    BaseLayerWithNamesResponse,
 )
 
 router = APIRouter(prefix="/api/v1/raster", tags=["Rasters"])
@@ -171,28 +174,22 @@ def create_base_layer(
     name: str | None = Form(None),
     url: str | None = Form(None),
     attribution: str | None = Form(None),
-    is_active: bool = Form(default=True),
+    is_active: str = Form("true"),
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Create a new base layer (e.g., OSM, Satellite, Orthophoto).
+    """Create a new base layer."""
+    if not name or not name.strip():
+        raise HTTPException(status_code=400, detail="name field is required")
 
-    Base layers are available for use as map backgrounds in the frontend.
+    is_active_bool = is_active.lower() in ("true", "1", "yes")
 
-    Form fields:
-    - layer_type (required): Type of base layer (osm, satellite, terrain, orthophoto, etc.)
-    - name: Display name for the layer
-    - url: Tile service URL (e.g., https://tile.openstreetmap.org/{z}/{x}/{y}.png)
-    - attribution: Attribution text for the tile provider
-    - is_active: Whether the layer is active (default: true)
-    """
     payload = BaseLayerCreate(
-        name=name,
+        name=name.strip(),
         layer_type=layer_type,
         url=url,
         attribution=attribution,
-        is_active=is_active,
+        is_active=is_active_bool,
     )
 
     layer = raster_service.create_base_layer(
@@ -216,6 +213,26 @@ def list_base_layers(
     """
     layers = raster_service.list_base_layers(db, skip=skip, limit=limit)
     return layers
+
+
+@base_layer.get("/names", response_model=List[BaseLayerWithNamesResponse])
+def list_all_base_layer_names(db: Session = Depends(get_db)):
+    """Get all base layers with their names."""
+    layers = raster_service.list_base_layers(db=db, skip=0, limit=9999)
+    result = []
+    for layer in layers:
+        layer_dict = {
+            "id": layer.id,
+            "name": layer.name,
+            "layer_type": layer.layer_type,
+            "url": layer.url,
+            "attribution": layer.attribution,
+            "is_active": layer.is_active,
+            "timestamp": layer.timestamp,
+            "names": raster_service.get_base_layer_names(db=db, layer_id=layer.id),
+        }
+        result.append(layer_dict)
+    return result
 
 
 @base_layer.get("/{layer_id}", response_model=BaseLayerResponse)
@@ -353,3 +370,9 @@ def get_road_vector_tile(
 
     tile_bytes = _fetch_road_tile(db, z, x, y)
     return Response(content=tile_bytes, media_type="application/vnd.mapbox-vector-tile")
+
+
+@base_layer.post("/names", response_model=BaseLayerNameResponse)
+def create_base_layer_name(payload: BaseLayerNameCreate, db: Session = Depends(get_db)):
+    """Create a new base layer name."""
+    return raster_service.create_base_layer_name(db=db, payload=payload)

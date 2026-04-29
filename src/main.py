@@ -16,6 +16,7 @@ from src.palika_profile.routes import router as palika_profile
 from src.roads.routes import router as roads
 from src.users.routes import router as users
 from src.raster.routes import router as raster, base_layer
+from src.vectortile.media_routes import router as project_media
 from src.palika_profile import models as palika_models
 from src.users import models as user_models
 
@@ -59,6 +60,7 @@ def initialize_database() -> None:
             logger.exception("Database initialization failed due to SQLAlchemy error.")
             raise
 
+
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
@@ -77,3 +79,4 @@ app.include_router(auth)
 app.include_router(palika_profile)
 app.include_router(raster)
 app.include_router(base_layer)
+app.include_router(project_media)

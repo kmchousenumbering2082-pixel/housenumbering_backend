@@ -1,4 +1,13 @@
-from sqlalchemy import Column, Integer, Float, String, JSON, DateTime, ForeignKey, Boolean
+from sqlalchemy import (
+    Column,
+    Integer,
+    Float,
+    String,
+    JSON,
+    DateTime,
+    ForeignKey,
+    Boolean,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from geoalchemy2 import Geometry
 from datetime import datetime, UTC
@@ -16,7 +25,7 @@ class BuildingGeometry(Base):
     geom = Column(Geometry("MULTIPOLYGON", srid=4326), nullable=True)
 
     building_id = Column(Integer, ForeignKey("buildings.id"), unique=True)
-    building = relationship("Building", back_populates = "geometry")
+    building = relationship("Building", back_populates="geometry")
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -30,19 +39,25 @@ class BuildingGeometry(Base):
 class Building(Base):
     __tablename__ = "buildings"
 
-    geometry = relationship("BuildingGeometry", back_populates = "building", 
-                            uselist = False, cascade= "all, delete-orphan")
+    geometry = relationship(
+        "BuildingGeometry",
+        back_populates="building",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     building_id = Column(Integer, nullable=True)
-    road_id = Column(Integer, ForeignKey("roads.id", ondelete="SET NULL"), nullable=True, index=True)
+    road_id = Column(
+        Integer, ForeignKey("roads.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     main_building_id = Column(Integer, nullable=True)
-    
+
     # Geometry fields
-    centroid = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
-    ref_centroid = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
-    gate_location = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
-    
+    centroid = Column(Geometry(geometry_type="POINT", srid=4326), nullable=True)
+    ref_centroid = Column(Geometry(geometry_type="POINT", srid=4326), nullable=True)
+    gate_location = Column(Geometry(geometry_type="POINT", srid=4326), nullable=True)
+
     owner_status = Column(String(20), nullable=True)
     temporary_type = Column(String(20), nullable=True)
     association_type = Column(String(20), nullable=True)
@@ -81,7 +96,7 @@ class RoadGeometry(Base):
     geom = Column(Geometry("MULTILINESTRING", srid=4326), nullable=True)
 
     road_id = Column(Integer, ForeignKey("roads.id"), unique=True)
-    road = relationship("Road", back_populates = "geometry")
+    road = relationship("Road", back_populates="geometry")
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -91,11 +106,16 @@ class RoadGeometry(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     last_data_request = Column(DateTime, nullable=True)
 
+
 class Road(Base):
     __tablename__ = "roads"
 
-    geometry = relationship("RoadGeometry", back_populates = "road",
-                            uselist = False, cascade = "all, delete-orphan")
+    geometry = relationship(
+        "RoadGeometry",
+        back_populates="road",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
     buildings = relationship("Building", back_populates="road")
 
     id = Column(Integer, primary_key=True, index=True)
@@ -125,9 +145,10 @@ class Road(Base):
 
 class RasterLayer(Base):
     """
-    A raster is a grid-based representation of geographic data. 
+    A raster is a grid-based representation of geographic data.
     This model stores information about the raster file, associated layer, attribute data, and ID.
     """
+
     __tablename__ = "raster_layers"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -136,24 +157,30 @@ class RasterLayer(Base):
     raster_file = Column(String(500), nullable=False)  # File path stored as string
     sld_file = Column(String(500), nullable=True)  # SLD file path for styling
     attr_data = Column(JSONB, nullable=True)
-    status = Column(String(15), nullable=True, default="pending")  # pending, completed, failed
+    status = Column(
+        String(15), nullable=True, default="pending"
+    )  # pending, completed, failed
     display_on_map = Column(Boolean, default=True)
     is_public = Column(Boolean, default=True)
     bbox = Column(JSONB, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    
+
     # Relationship to metadata (renamed from 'metadata' to avoid SQLAlchemy reserved attr)
-    raster_metadata = relationship("RasterLayerMetadata", back_populates="raster_layer", 
-                                   cascade="all, delete-orphan")
+    raster_metadata = relationship(
+        "RasterLayerMetadata",
+        back_populates="raster_layer",
+        cascade="all, delete-orphan",
+    )
 
 
 class RasterLayerMetadata(Base):
     """
-    Stores metadata for a raster layer including width, height, bands, 
+    Stores metadata for a raster layer including width, height, bands,
     spatial reference, extent, legend, and statistics.
     """
+
     __tablename__ = "raster_layer_metadata"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -172,7 +199,7 @@ class RasterLayerMetadata(Base):
     maxy = Column(Float, default=0)
     file_name = Column(String(100), nullable=True)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    
+
     # Relationship back to RasterLayer
     raster_layer = relationship("RasterLayer", back_populates="raster_metadata")
 
@@ -181,6 +208,7 @@ class BaseLayer(Base):
     """
     Stores base layer information (e.g., OSM, Satellite, Orthophoto).
     """
+
     __tablename__ = "base_layers"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -198,17 +226,39 @@ class BaseLayerName(Base):
     """
     Stores localized names and display order for base layers.
     """
+
     __tablename__ = "base_layer_names"
 
     id = Column(Integer, primary_key=True, index=True)
     base_layer_id = Column(Integer, ForeignKey("base_layers.id"), nullable=False)
-    name = Column(String(100), nullable=True, index=True)  # Unique identifier (match frontend)
-    label_en = Column(String(100), nullable=True)  # Display name in English
-    label_ne = Column(String(100), nullable=True)  # Display name in Nepali
+    name = Column(String(100), nullable=True, index=True)
+    label_en = Column(String(100), nullable=True)
+    label_ne = Column(String(100), nullable=True)
     order = Column(Integer, default=1)
     is_visible = Column(Boolean, default=True)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    
+
     __table_args__ = (
         # Ensure this order field is properly indexed for sorting
     )
+
+
+class LayerVisibility(Base):
+    __tablename__ = "layer_visibility"
+
+    id = Column(Integer, primary_key=True, index=True)
+    layer_name = Column(String(255), nullable=False, unique=True)
+    is_visible = Column(Integer, nullable=False, default=1)  # 1 for True, 0 for False
+    styling = Column(JSONB, nullable=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class ProjectMedia(Base):
+    __tablename__ = "project_media"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=True)
+    file_path = Column(String(500), nullable=False, default="/media")
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    is_deleted = Column(Boolean, default=False)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
