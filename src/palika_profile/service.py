@@ -86,7 +86,10 @@ def _read_shapefile_zip(zip_path: Path) -> gpd.GeoDataFrame:
 
             for shp in shp_files:
                 base = shp.with_suffix("")
-                if all(base.with_suffix(ext).exists() for ext in SHAPEFILE_REQUIRED_EXTENSIONS):
+                if all(
+                    base.with_suffix(ext).exists()
+                    for ext in SHAPEFILE_REQUIRED_EXTENSIONS
+                ):
                     return gpd.read_file(shp)
 
             raise _bad_request("Zip must include matching .shp, .dbf, and .shx files")
@@ -96,7 +99,11 @@ def _read_shapefile_zip(zip_path: Path) -> gpd.GeoDataFrame:
 
 def _read_geodataframe(path: Path) -> gpd.GeoDataFrame:
     try:
-        gdf = _read_shapefile_zip(path) if path.suffix.lower() == ".zip" else gpd.read_file(path)
+        gdf = (
+            _read_shapefile_zip(path)
+            if path.suffix.lower() == ".zip"
+            else gpd.read_file(path)
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -111,12 +118,18 @@ def _read_geodataframe(path: Path) -> gpd.GeoDataFrame:
     if gdf.empty:
         raise _bad_request("Uploaded file has no valid geometries")
 
-    return gdf.set_crs(epsg=4326, allow_override=True) if gdf.crs is None else gdf.to_crs(epsg=4326)
+    return (
+        gdf.set_crs(epsg=4326, allow_override=True)
+        if gdf.crs is None
+        else gdf.to_crs(epsg=4326)
+    )
 
 
 def _to_multipolygon(geometries) -> MultiPolygon:
     # Normalize any polygon-like collection into a single MultiPolygon for storage.
-    merged = unary_union([geom for geom in geometries if geom is not None and not geom.is_empty])
+    merged = unary_union(
+        [geom for geom in geometries if geom is not None and not geom.is_empty]
+    )
     if merged.is_empty:
         raise _bad_request("Cannot build geometry from empty dataset")
     if isinstance(merged, Polygon):
@@ -143,7 +156,9 @@ def _to_multipolygon(geometries) -> MultiPolygon:
     raise _bad_request("Unsupported geometry type for palika boundary")
 
 
-def _upsert_file_record(db: Session, file_type: str, file_upload: str) -> PalikaGeometryFile:
+def _upsert_file_record(
+    db: Session, file_type: str, file_upload: str
+) -> PalikaGeometryFile:
     row = PalikaGeometryFile(file_type=file_type, file_upload=file_upload)
     db.add(row)
     db.flush()
@@ -172,7 +187,9 @@ def _resolve_ward_column(gdf: gpd.GeoDataFrame, ward_column: str | None) -> str:
         if candidate in lookup:
             return lookup[candidate]
 
-    raise _bad_request("Ward column not found. Provide ward_column or include one of: ward_no, ward, wardno")
+    raise _bad_request(
+        "Ward column not found. Provide ward_column or include one of: ward_no, ward, wardno"
+    )
 
 
 def _parse_ward_no(value) -> int | None:
@@ -200,7 +217,11 @@ def _upsert_ward_geometries(
             continue
 
         metric_group = group.to_crs(epsg=3857)
-        row = db.query(PalikaWardGeometry).filter(PalikaWardGeometry.ward_no == ward_no).first()
+        row = (
+            db.query(PalikaWardGeometry)
+            .filter(PalikaWardGeometry.ward_no == ward_no)
+            .first()
+        )
         if not row:
             row = PalikaWardGeometry(ward_no=ward_no)
             db.add(row)
@@ -213,7 +234,9 @@ def _upsert_ward_geometries(
         rows.append(row)
 
     if not rows:
-        raise _bad_request("No valid ward geometries could be extracted from uploaded file")
+        raise _bad_request(
+            "No valid ward geometries could be extracted from uploaded file"
+        )
     return rows
 
 
@@ -241,7 +264,9 @@ def create_palika_profile(db: Session, payload: PalikaProfileCreate) -> PalikaPr
     return row
 
 
-def update_palika_profile(db: Session, profile_id: int, payload: PalikaProfileUpdate) -> PalikaProfile:
+def update_palika_profile(
+    db: Session, profile_id: int, payload: PalikaProfileUpdate
+) -> PalikaProfile:
     row = get_palika_profile(db, profile_id)
     for key, value in _profile_payload(payload).items():
         setattr(row, key, value)
@@ -324,13 +349,22 @@ def get_palika_geometry(db: Session) -> dict:
     return _geometry_to_dict(row)
 
 
-def list_palika_ward_geometries(db: Session) -> list[dict]:
-    rows = db.query(PalikaWardGeometry).order_by(PalikaWardGeometry.ward_no.asc()).all()
+def list_palika_ward_geometries(
+    db: Session, ward_no: list[int] | None = None
+) -> list[dict]:
+    query = db.query(PalikaWardGeometry)
+    if ward_no:
+        query = query.filter(PalikaWardGeometry.ward_no.in_(ward_no))
+    rows = query.order_by(PalikaWardGeometry.ward_no.asc()).all()
     return [_ward_geometry_to_dict(row) for row in rows]
 
 
 def get_palika_ward_geometry_by_ward(db: Session, ward_no: int) -> dict:
-    row = db.query(PalikaWardGeometry).filter(PalikaWardGeometry.ward_no == ward_no).first()
+    row = (
+        db.query(PalikaWardGeometry)
+        .filter(PalikaWardGeometry.ward_no == ward_no)
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Palika ward geometry not found")
     return _ward_geometry_to_dict(row)

@@ -8,6 +8,7 @@ Key Endpoints:
 - GET /api/v1/tiles/{layer_name}/{z}/{x}/{y} - Get vector tile for layer
 - Supports tile requests from frontend mapping libraries (Mapbox GL, etc.)
 """
+
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -22,7 +23,7 @@ from src.vectortile.service import (
 )
 from src.models import FeatureCollection, VectorLayer
 
-router = APIRouter(prefix="/vectortile", tags=["vector-tile"])
+router = APIRouter(prefix="/api/v1/vectortile", tags=["vector-tile"])
 
 
 @router.get("/tiles/{z}/{x}/{y}")
@@ -30,19 +31,27 @@ async def get_vector_tile(
     z: int,
     x: int,
     y: int,
-    vector_layer_id: Optional[int] = Query(None, description="Vector layer ID to filter"),
+    vector_layer_id: Optional[int] = Query(
+        None, description="Vector layer ID to filter"
+    ),
     radius: Optional[float] = Query(None, description="Radius in meters for filtering"),
-    geom_type: str = Query("point", description="Geometry type: 'point', 'line', or 'polygon'"),
-    latitude: Optional[List[float]] = Query(None, description="Latitude values for filtering"),
-    longitude: Optional[List[float]] = Query(None, description="Longitude values for filtering"),
+    geom_type: str = Query(
+        "point", description="Geometry type: 'point', 'line', or 'polygon'"
+    ),
+    latitude: Optional[List[float]] = Query(
+        None, description="Latitude values for filtering"
+    ),
+    longitude: Optional[List[float]] = Query(
+        None, description="Longitude values for filtering"
+    ),
     bbox: Optional[str] = Query(None, description="Bounding box in WKT format"),
     from_date: Optional[str] = Query(None, description="Filter from date (YYYY-MM-DD)"),
     to_date: Optional[str] = Query(None, description="Filter to date (YYYY-MM-DD)"),
-    db = Depends(get_db),
+    db=Depends(get_db),
 ):
     """
     Get a vector tile for a specific tile coordinate (z/x/y).
-    
+
     **Parameters:**
     - `z`: Zoom level
     - `x`: Tile X coordinate
@@ -55,10 +64,10 @@ async def get_vector_tile(
     - `bbox` (optional): Bounding box in WKT format
     - `from_date` (optional): Filter features created after date (YYYY-MM-DD)
     - `to_date` (optional): Filter features created before date (YYYY-MM-DD)
-    
+
     **Response:**
     Binary MVT (Mapbox Vector Tile) format data or GeoJSON features
-    
+
     **Status Codes:**
     - 200: Successfully generated tile
     - 204: No content (no features in tile)
@@ -80,38 +89,39 @@ async def get_vector_tile(
             from_date=from_date,
             to_date=to_date,
         )
-        
+
         if not features:
             return Response(content=b"", status_code=204)
-        
+
         # Return as GeoJSON FeatureCollection (can be converted to MVT by client)
         geojson_features = []
         for feature in features:
-            geojson_features.append({
-                "type": "Feature",
-                "id": feature["id"],
-                "properties": {
-                    "label": feature["label"],
-                    "style": feature["style"],
-                    **feature["attributes"]
-                },
-                "geometry": {
-                    "type": "GeometryCollection",
-                    "geometries": [{"type": "Point", "coordinates": [0, 0]}]  # Placeholder
+            geojson_features.append(
+                {
+                    "type": "Feature",
+                    "id": feature["id"],
+                    "properties": {
+                        "label": feature["label"],
+                        "style": feature["style"],
+                        **feature["attributes"],
+                    },
+                    "geometry": {
+                        "type": "GeometryCollection",
+                        "geometries": [
+                            {"type": "Point", "coordinates": [0, 0]}
+                        ],  # Placeholder
+                    },
                 }
-            })
-        
-        geojson = {
-            "type": "FeatureCollection",
-            "features": geojson_features
-        }
-        
+            )
+
+        geojson = {"type": "FeatureCollection", "features": geojson_features}
+
         return Response(
             content=json.dumps(geojson),
             media_type="application/json",
-            status_code=200 if features else 204
+            status_code=200 if features else 204,
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -136,7 +146,7 @@ async def get_vector_tile_pbf(
     """
     Get a vector tile in GeoJSON format (PBF support requires optional dependencies).
     Currently returns GeoJSON which can be converted to PBF client-side.
-    
+
     To enable true MVT/PBF support, install: pip install mapbox-vector-tile mercantile
     """
     try:
@@ -154,88 +164,90 @@ async def get_vector_tile_pbf(
             from_date=from_date,
             to_date=to_date,
         )
-        
+
         if not features:
             return Response(content=b"", status_code=204)
-        
+
         # Return as GeoJSON FeatureCollection
         geojson_features = []
         for feature in features:
-            geojson_features.append({
-                "type": "Feature",
-                "id": feature["id"],
-                "properties": {
-                    "label": feature["label"],
-                    "style": feature["style"],
-                    **feature["attributes"]
-                },
-                "geometry": {
-                    "type": "GeometryCollection",
-                    "geometries": []
+            geojson_features.append(
+                {
+                    "type": "Feature",
+                    "id": feature["id"],
+                    "properties": {
+                        "label": feature["label"],
+                        "style": feature["style"],
+                        **feature["attributes"],
+                    },
+                    "geometry": {"type": "GeometryCollection", "geometries": []},
                 }
-            })
-        
-        geojson = {
-            "type": "FeatureCollection",
-            "features": geojson_features
-        }
-        
+            )
+
+        geojson = {"type": "FeatureCollection", "features": geojson_features}
+
         return Response(
             content=json.dumps(geojson),
             media_type="application/geo+json",
-            status_code=200 if features else 204
+            status_code=200 if features else 204,
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error generating vector tile: {str(e)}"
+            status_code=500, detail=f"Error generating vector tile: {str(e)}"
         )
 
 
 @router.get("/info")
 async def get_tile_info(
-    db = Depends(get_db),
+    db=Depends(get_db),
 ):
     """
     Get metadata about available vector tiles.
-    
+
     **Response:**
     - Total features count
     - Earliest and latest feature dates
     - Available vector layers
-    
+
     Useful for TMS (Tile Map Service) clients to understand tile availability.
     """
     try:
-        
-        total_features = db.query(func.count(FeatureCollection.id)).filter(
-            FeatureCollection.is_deleted == False
-        ).scalar() or 0
-        
+
+        total_features = (
+            db.query(func.count(FeatureCollection.id))
+            .filter(FeatureCollection.is_deleted == False)
+            .scalar()
+            or 0
+        )
+
         earliest_date = get_earliest_feature_date(db)
-        
-        layers = db.query(
-            VectorLayer.id,
-            VectorLayer.name_en,
-            VectorLayer.name_ne,
-            func.count(FeatureCollection.id).label("feature_count")
-        ).outerjoin(FeatureCollection).filter(
-            FeatureCollection.is_deleted == False
-        ).group_by(VectorLayer.id).all()
-        
+
+        layers = (
+            db.query(
+                VectorLayer.id,
+                VectorLayer.name_en,
+                VectorLayer.name_ne,
+                func.count(FeatureCollection.id).label("feature_count"),
+            )
+            .outerjoin(FeatureCollection)
+            .filter(FeatureCollection.is_deleted == False)
+            .group_by(VectorLayer.id)
+            .all()
+        )
+
         layer_info = [
             {
                 "id": layer.id,
                 "name_en": layer.name_en,
                 "name_ne": layer.name_ne,
-                "feature_count": layer.feature_count or 0
+                "feature_count": layer.feature_count or 0,
             }
             for layer in layers
         ]
-        
+
         return {
             "total_features": total_features,
             "earliest_date": earliest_date.isoformat() if earliest_date else None,
@@ -249,8 +261,10 @@ async def get_tile_info(
                 "bbox": "Bounding box in WKT format",
                 "from_date": "Filter from date (YYYY-MM-DD)",
                 "to_date": "Filter to date (YYYY-MM-DD)",
-            }
+            },
         }
-    
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting tile info: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error getting tile info: {str(e)}"
+        )

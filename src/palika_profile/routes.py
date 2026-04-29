@@ -150,8 +150,13 @@ def get_palika_geometry(db: Session = Depends(get_db)):
 
 
 @router.get("/ward_geometries", response_model=List[PalikaWardGeometryResponse])
-def list_palika_ward_geometries(db: Session = Depends(get_db)):
-    return palika_service.list_palika_ward_geometries(db=db)
+def list_palika_ward_geometries(
+    db: Session = Depends(get_db), ward_no: str | None = None
+):
+    ward_nos = None
+    if ward_no:
+        ward_nos = [int(w.strip()) for w in ward_no.split(",")]
+    return palika_service.list_palika_ward_geometries(db=db, ward_no=ward_nos)
 
 
 @router.get("/ward_geometries/{ward_no}", response_model=PalikaWardGeometryResponse)
