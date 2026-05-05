@@ -11,6 +11,7 @@ from src.pagination import Pagination
 from src.buildings.schema import BuildingCreate, BuildingResponse
 from src.buildings.service import (
     assign_roads_to_all_buildings,
+    count_buildings,
     create_building,
     delete_building,
     get_building,
@@ -28,6 +29,22 @@ def create_building_route(
     db: Session = Depends(get_db),
 ):
     return create_building(db=db, building_data=building)
+
+
+@router.get("/count", response_model=dict)
+def get_buildings_count_route(
+    ward_no: Optional[int] = Query(default=None),
+    min_floor: Optional[float] = Query(default=None, ge=0),
+    roof_type: Optional[RoofType] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    count = count_buildings(
+        db=db,
+        ward_no=ward_no,
+        min_floor=min_floor,
+        roof_type=roof_type,
+    )
+    return {"count": count}
 
 
 @router.get("/", response_model=List[BuildingResponse])

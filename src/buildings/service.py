@@ -30,6 +30,24 @@ def create_building(db: Session, building_data: BuildingCreate) -> Building:
     return db_building
 
 
+def count_buildings(
+    db: Session,
+    ward_no: Optional[int] = None,
+    min_floor: Optional[float] = None,
+    roof_type: Optional[RoofType] = None,
+) -> int:
+    query = db.query(Building)
+
+    if ward_no is not None:
+        query = query.filter(Building.ward_no == ward_no)
+    if min_floor is not None:
+        query = query.filter(Building.floor >= min_floor)
+    if roof_type is not None:
+        query = query.filter(Building.roof_type == roof_type.value)
+
+    return query.count()
+
+
 def list_buildings(
     db: Session,
     skip: int = 0,
@@ -67,7 +85,9 @@ def get_building(db: Session, building_id: int) -> Building:
     return building
 
 
-def update_building(db: Session, building_id: int, building_data: BuildingCreate) -> Building:
+def update_building(
+    db: Session, building_id: int, building_data: BuildingCreate
+) -> Building:
     building = get_building(db=db, building_id=building_id)
     update_data = building_data.model_dump(exclude_unset=True)
     _validate_road_id(db, update_data.get("road_id"))
@@ -90,8 +110,10 @@ def assign_road_to_building(
     building: Building,
     distance_limit: int = 100,
 ):
-    point_hex = building.gate_location.desc if building.gate_location else (
-        building.centroid.desc if building.centroid else None
+    point_hex = (
+        building.gate_location.desc
+        if building.gate_location
+        else (building.centroid.desc if building.centroid else None)
     )
     if not point_hex:
         return None
@@ -113,7 +135,7 @@ def assign_road_to_building(
             )
             LIMIT 1
         """),
-        {"point": point_hex, "distance_limit": distance_limit}
+        {"point": point_hex, "distance_limit": distance_limit},
     ).fetchone()
 
     if result:
@@ -126,12 +148,15 @@ def assign_roads_to_all_buildings(
     db: Session,
     distance_limit: int = 100,
 ):
-    buildings = db.query(Building).filter(
-        (Building.gate_location.isnot(None)) |
-        (Building.centroid.isnot(None))
-    ).all()
+    buildings = (
+        db.query(Building)
+        .filter((Building.gate_location.isnot(None)) | (Building.centroid.isnot(None)))
+        .all()
+    )
 
-    updated_count = sum(1 for b in buildings if assign_road_to_building(db, b, distance_limit))
+    updated_count = sum(
+        1 for b in buildings if assign_road_to_building(db, b, distance_limit)
+    )
     db.commit()
 
     return {

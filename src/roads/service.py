@@ -2,6 +2,8 @@ from typing import Optional
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import cast
+from sqlalchemy.types import Integer as SQLInteger
 
 from src.enums.roads import RoadCategory, RoadClass, RoadLane, RoadType
 from src.models import Road
@@ -15,6 +17,30 @@ def create_road(db: Session, road_data: RoadCreate) -> Road:
     db.commit()
     db.refresh(db_road)
     return db_road
+
+
+def count_roads(
+    db: Session,
+    road_type: Optional[RoadType] = None,
+    road_category: Optional[RoadCategory] = None,
+    road_class: Optional[RoadClass] = None,
+    road_lane: Optional[RoadLane] = None,
+    ward_no: Optional[int] = None,
+) -> int:
+    query = db.query(Road)
+
+    if ward_no is not None:
+        query = query.filter(cast(Road.ward_no, SQLInteger) == ward_no)
+    if road_type is not None:
+        query = query.filter(Road.road_type == road_type.value)
+    if road_category is not None:
+        query = query.filter(Road.road_category == road_category.value)
+    if road_class is not None:
+        query = query.filter(Road.road_class == road_class.value)
+    if road_lane is not None:
+        query = query.filter(Road.road_lane == road_lane.value)
+
+    return query.count()
 
 
 def list_roads(

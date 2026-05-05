@@ -80,3 +80,8 @@ class PalikaWardGeometryUploadSummary(BaseModel):
     feature_count: int
     ward_count: int
     updated_ward_ids: list[int]
+
+
+class WardNumbersResponse(BaseModel):
+    count: int
+    ward_numbers: list[int]

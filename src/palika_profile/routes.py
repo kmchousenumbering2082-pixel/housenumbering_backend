@@ -19,6 +19,7 @@ from src.palika_profile.schema import (
     PalikaProfileUpdate,
     PalikaWardGeometryResponse,
     PalikaWardGeometryUploadSummary,
+    WardNumbersResponse,
 )
 from src.palika_profile import service as palika_service
 
@@ -164,6 +165,7 @@ def get_palika_ward_geometry(ward_no: int, db: Session = Depends(get_db)):
     return palika_service.get_palika_ward_geometry_by_ward(db=db, ward_no=ward_no)
 
 
-@router.get("/ward_numbers", response_model=List[int])
+@router.get("/ward_numbers", response_model=WardNumbersResponse)
 def get_unique_ward_numbers(db: Session = Depends(get_db)):
-    return palika_service.get_unique_ward_numbers(db=db)
+    ward_numbers = palika_service.get_unique_ward_numbers(db=db)
+    return WardNumbersResponse(count=len(ward_numbers), ward_numbers=ward_numbers)

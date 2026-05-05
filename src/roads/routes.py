@@ -10,6 +10,7 @@ from src.pagination import Pagination
 
 from src.roads.schema import RoadCreate, RoadResponse, RoadUpdate
 from src.roads.service import (
+    count_roads,
     create_road,
     delete_road,
     get_road,
@@ -27,6 +28,26 @@ def create_road_route(
     db: Session = Depends(get_db),
 ):
     return create_road(db=db, road_data=road)
+
+
+@router.get("/count", response_model=dict)
+def get_roads_count_route(
+    road_type: Optional[RoadType] = Query(default=None),
+    road_category: Optional[RoadCategory] = Query(default=None),
+    road_class: Optional[RoadClass] = Query(default=None),
+    road_lane: Optional[RoadLane] = Query(default=None),
+    ward_no: Optional[int] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    count = count_roads(
+        db=db,
+        road_type=road_type,
+        road_category=road_category,
+        road_class=road_class,
+        road_lane=road_lane,
+        ward_no=ward_no,
+    )
+    return {"count": count}
 
 
 @router.get("/", response_model=List[RoadResponse])
