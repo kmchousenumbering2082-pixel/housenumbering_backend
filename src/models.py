@@ -262,3 +262,68 @@ class ProjectMedia(Base):
     uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     is_deleted = Column(Boolean, default=False)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class VectorLayer(Base):
+    """
+    Stores vector layer information for GeoJSON and Shapefile uploads.
+    Supports polygon, line, and point geometries.
+    """
+
+    __tablename__ = "vector_layers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name_en = Column(String(255), nullable=True)
+    name_ne = Column(String(255), nullable=True)
+    layer_type = Column(String(50), nullable=True)  # polygon, line, point
+    attr_data = Column(JSONB, nullable=True)
+    style_value = Column(String(500), nullable=True)
+    label_value = Column(String(500), nullable=True)
+    is_public = Column(Boolean, default=True)
+    display_on_map = Column(Boolean, default=True)
+    is_deleted = Column(Boolean, default=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    # Relationships
+    features = relationship(
+        "FeatureCollection",
+        back_populates="vector_layer",
+        cascade="all, delete-orphan",
+    )
+    created_by_user = relationship(
+        "User",
+        foreign_keys=[created_by],
+        primaryjoin="VectorLayer.created_by == User.id",
+    )
+    updated_by_user = relationship(
+        "User",
+        foreign_keys=[updated_by],
+        primaryjoin="VectorLayer.updated_by == User.id",
+    )
+
+
+class FeatureCollection(Base):
+    """
+    Stores individual features/geometries within a vector layer.
+    Each feature contains geometry and associated attributes.
+    """
+
+    __tablename__ = "feature_collections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vector_layer_id = Column(
+        Integer, ForeignKey("vector_layers.id"), nullable=False, index=True
+    )
+    attr_data = Column(JSONB, nullable=True)
+    geom = Column(Geometry(geometry_type="GEOMETRY", srid=4326), nullable=True)
+    style_value = Column(String(500), nullable=True)
+    label_value = Column(String(500), nullable=True)
+    is_deleted = Column(Boolean, default=False)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    # Relationships
+    vector_layer = relationship(
+        "VectorLayer", back_populates="features", foreign_keys=[vector_layer_id]
+    )
