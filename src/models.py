@@ -321,9 +321,21 @@ class FeatureCollection(Base):
     style_value = Column(String(500), nullable=True)
     label_value = Column(String(500), nullable=True)
     is_deleted = Column(Boolean, default=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     # Relationships
     vector_layer = relationship(
         "VectorLayer", back_populates="features", foreign_keys=[vector_layer_id]
+    )
+    created_by_user = relationship(
+        "User",
+        foreign_keys=[created_by],
+        primaryjoin="FeatureCollection.created_by == User.id",
+    )
+    updated_by_user = relationship(
+        "User",
+        foreign_keys=[updated_by],
+        primaryjoin="FeatureCollection.updated_by == User.id",
     )
