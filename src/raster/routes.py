@@ -291,6 +291,7 @@ _BUILDING_MVT_SQL = text("""
         JOIN bounds ON ST_Intersects(ST_Transform(bg.geom, 3857), bounds.geom)
         WHERE bg.geom IS NOT NULL
           AND COALESCE(bg.is_deleted, false) = false
+          AND b.ward_no = COALESCE(:ward_no, b.ward_no)
     )
     SELECT COALESCE(ST_AsMVT(tile_features, 'buildings', 4096, 'geom'), '\\x'::bytea) AS tile
     FROM tile_features
@@ -318,21 +319,30 @@ _ROAD_MVT_SQL = text("""
         JOIN bounds ON ST_Intersects(ST_Transform(rg.geom, 3857), bounds.geom)
         WHERE rg.geom IS NOT NULL
           AND COALESCE(rg.is_deleted, false) = false
+                    AND (:ward_no IS NULL OR r.ward_no = to_jsonb(:ward_no))
     )
     SELECT COALESCE(ST_AsMVT(tile_features, 'roads', 4096, 'geom'), '\\x'::bytea) AS tile
     FROM tile_features
     """)
 
 
-def _fetch_building_tile(db: Session, z: int, x: int, y: int) -> bytes:
-    result = db.execute(_BUILDING_MVT_SQL, {"z": z, "x": x, "y": y}).scalar()
+def _fetch_building_tile(
+    db: Session, z: int, x: int, y: int, ward_no: int | None = None
+) -> bytes:
+    result = db.execute(
+        _BUILDING_MVT_SQL, {"z": z, "x": x, "y": y, "ward_no": ward_no}
+    ).scalar()
     if result is None:
         return b""
     return bytes(result)
 
 
-def _fetch_road_tile(db: Session, z: int, x: int, y: int) -> bytes:
-    result = db.execute(_ROAD_MVT_SQL, {"z": z, "x": x, "y": y}).scalar()
+def _fetch_road_tile(
+    db: Session, z: int, x: int, y: int, ward_no: int | None = None
+) -> bytes:
+    result = db.execute(
+        _ROAD_MVT_SQL, {"z": z, "x": x, "y": y, "ward_no": ward_no}
+    ).scalar()
     if result is None:
         return b""
     return bytes(result)
@@ -343,6 +353,7 @@ def get_building_vector_tile(
     z: int = Path(..., ge=0, le=22),
     x: int = Path(..., ge=0),
     y: int = Path(..., ge=0),
+    ward_no: int | None = None,
     db: Session = Depends(get_db),
 ):
     max_index = (1 << z) - 1
@@ -351,7 +362,7 @@ def get_building_vector_tile(
             status_code=400, detail="Tile x/y is out of range for zoom level"
         )
 
-    tile_bytes = _fetch_building_tile(db, z, x, y)
+    tile_bytes = _fetch_building_tile(db, z, x, y, ward_no)
     return Response(content=tile_bytes, media_type="application/vnd.mapbox-vector-tile")
 
 
@@ -360,6 +371,7 @@ def get_road_vector_tile(
     z: int = Path(..., ge=0, le=22),
     x: int = Path(..., ge=0),
     y: int = Path(..., ge=0),
+    ward_no: int | None = None,
     db: Session = Depends(get_db),
 ):
     max_index = (1 << z) - 1
@@ -368,7 +380,7 @@ def get_road_vector_tile(
             status_code=400, detail="Tile x/y is out of range for zoom level"
         )
 
-    tile_bytes = _fetch_road_tile(db, z, x, y)
+    tile_bytes = _fetch_road_tile(db, z, x, y, ward_no)
     return Response(content=tile_bytes, media_type="application/vnd.mapbox-vector-tile")
 
 
