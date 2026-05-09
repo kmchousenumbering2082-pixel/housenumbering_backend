@@ -4,11 +4,13 @@ import json
 from shapely import wkb
 from fastapi import APIRouter, Depends, Query, HTTPException, Form, File, UploadFile
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from src.auth.dependencies import get_current_user
 from src.database import get_db
 from src.pagination import Pagination
 from src.users.models import User
+from src.models import FeatureCollection
 
 from src.vector.schema import (
     VectorLayerCreate,
@@ -469,6 +471,62 @@ def list_features_endpoint(
         order=order,
     )
     return [_build_feature_response(feature) for feature in features]
+
+
+@router.get("/features_with_geom", response_model=List[FeatureCollectionResponse])
+def list_features_with_geom_endpoint(
+    skip: int = Query(0, ge=0, description="Skip N rows"),
+    limit: int = Query(10, ge=1, le=10000, description="Limit results (up to 10000)"),
+    vector_layer_id: int = Query(..., description="Vector layer ID (required)"),
+    is_deleted: Optional[bool] = Query(None, description="Include deleted features"),
+    search: Optional[str] = Query(None, description="Search by label or style value"),
+    sort_by: str = Query("id", description="Sort by field"),
+    order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order"),
+    db: Session = Depends(get_db),
+):
+    """
+    List features for a layer with full geometry payload for map rendering.
+
+    **Use this endpoint when you need `geom` in response.**
+    """
+    features = list_features(
+        db=db,
+        skip=skip,
+        limit=limit,
+        vector_layer_id=vector_layer_id,
+        is_deleted=is_deleted,
+        search=search,
+        sort_by=sort_by,
+        order=order,
+    )
+
+    feature_responses = []
+    for feature in features:
+        geom_text = None
+        if feature.geom is not None:
+            # Use PostGIS text conversion directly to avoid WKB parse issues.
+            geom_text = (
+                db.query(func.ST_AsText(FeatureCollection.geom))
+                .filter(FeatureCollection.id == feature.id)
+                .scalar()
+            )
+
+        feature_responses.append(
+            FeatureCollectionResponse(
+                id=feature.id,
+                vector_layer_id=feature.vector_layer_id,
+                attr_data=feature.attr_data,
+                geom=geom_text,
+                style_value=feature.style_value,
+                label_value=feature.label_value,
+                created_by=_get_username(feature.created_by_user),
+                updated_by=_get_username(feature.updated_by_user),
+                is_deleted=feature.is_deleted,
+                timestamp=feature.timestamp,
+            )
+        )
+
+    return feature_responses
 
 
 @router.get("/features/{feature_id}", response_model=FeatureCollectionResponse)
