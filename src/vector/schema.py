@@ -25,7 +25,7 @@ class VectorLayerBase(BaseModel):
     style_value: Optional[str] = None
     label_value: Optional[str] = None
     is_public: bool = True
-    display_on_map: bool = True
+    display_on_map: bool = False
 
 
 class VectorLayerCreate(VectorLayerBase):
@@ -90,7 +90,7 @@ class VectorLayerResponse(VectorLayerBase):
     style_value: Optional[str] = None
     label_value: Optional[str] = None
     is_public: bool = True
-    display_on_map: bool = True
+    display_on_map: bool = False
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
     timestamp: Optional[datetime] = None

@@ -184,7 +184,7 @@ def create_layer_form(
     style_value: Optional[str] = Form(None),
     label_value: Optional[str] = Form(None),
     is_public: str = Form("true"),
-    display_on_map: str = Form("true"),
+    display_on_map: str = Form("false"),
     attr_data_json: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -225,7 +225,7 @@ def upload_vector_file_endpoint(
     name_en: str = Form(..., description="Layer name in English"),
     name_ne: Optional[str] = Form(None, description="Layer name in Nepali"),
     is_public: str = Form("true", description="Make layer public"),
-    display_on_map: str = Form("true", description="Display layer on map by default"),
+    display_on_map: str = Form("false", description="Display layer on map by default"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -241,7 +241,7 @@ def upload_vector_file_endpoint(
     - `name_en`: Layer name in English (required)
     - `name_ne`: Layer name in Nepali (optional)
     - `is_public`: Whether layer is publicly accessible (default: true)
-    - `display_on_map`: Display layer in map by default (default: true)
+    - `display_on_map`: Display layer in map by default (default: false)
 
     **Returns:** Layer ID, feature count, and upload status
     """
@@ -269,7 +269,7 @@ def upload_vector_file_endpoint_with_slash(
     name_en: str = Form(..., description="Layer name in English"),
     name_ne: Optional[str] = Form(None, description="Layer name in Nepali"),
     is_public: str = Form("true", description="Make layer public"),
-    display_on_map: str = Form("true", description="Display layer on map by default"),
+    display_on_map: str = Form("false", description="Display layer on map by default"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
