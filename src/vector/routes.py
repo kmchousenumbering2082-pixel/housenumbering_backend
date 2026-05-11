@@ -10,7 +10,7 @@ from src.auth.dependencies import get_current_user
 from src.database import get_db
 from src.pagination import Pagination
 from src.users.models import User
-from src.models import FeatureCollection
+from src.models import FeatureCollection, Building, Road
 
 from src.vector.schema import (
     VectorLayerCreate,
@@ -23,6 +23,9 @@ from src.vector.schema import (
     FeatureCollectionListResponse,
     VectorUploadSummary,
     VectorUploadResponse,
+    BuildingPopupResponse,
+    RoadPopupResponse,
+    MapPopupResponse,
 )
 from src.vector.service import (
     create_vector_layer,
@@ -607,3 +610,94 @@ def soft_delete_feature_endpoint(
     """Soft delete a feature (mark as deleted)."""
     delete_feature(db=db, feature_id=feature_id)
     return None
+
+
+# ============ MAP POPUP ENDPOINTS ============
+
+
+@router.get("/popup", response_model=MapPopupResponse)
+def get_map_popup(
+    id: int = Query(..., description="Feature ID"),
+    type: str = Query(..., description="Feature type: 'building' or 'road'"),
+    is_public: bool = Query(True, description="Filter by public status"),
+    db: Session = Depends(get_db),
+):
+    """
+    Get detailed information for map popup when feature is clicked.
+
+    **Parameters:**
+    - `id`: Unique identifier of the feature
+    - `type`: Type of feature ('building' or 'road')
+    - `is_public`: Filter by public visibility (default: True)
+
+    **Returns:**
+    - Building or Road information depending on type parameter with all relevant fields
+    """
+    if type.lower() not in ("building", "road"):
+        raise HTTPException(status_code=400, detail="type must be 'building' or 'road'")
+
+    if type.lower() == "building":
+        building = db.query(Building).filter(Building.id == id).first()
+        if not building:
+            raise HTTPException(status_code=404, detail="Building not found")
+
+        return MapPopupResponse(
+            id=building.id,
+            type="building",
+            data={
+                "id": building.id,
+                "building_id": building.building_id,
+                "house_no": building.house_no,
+                "plot_no": building.plot_no,
+                "tole_name": building.tole_name,
+                "ward_no": building.ward_no,
+                "owner_name": building.owner_name,
+                "owner_status": building.owner_status,
+                "building_use": building.building_use,
+                "building_structure": building.building_structure,
+                "roof_type": building.roof_type,
+                "floor": building.floor,
+                "plinth_area": building.plinth_area,
+                "road_type": building.road_type,
+                "road_lane": building.road_lane,
+                "road_width": building.road_width,
+                "direction": building.direction,
+                "reg_type": building.reg_type,
+                "plus_code": building.plus_code,
+                "metric_address": building.metric_address,
+                "remarks": building.remarks,
+                "attr_data": building.attr_data,
+                "timestamp": (
+                    building.timestamp.isoformat() if building.timestamp else None
+                ),
+            },
+        )
+
+    elif type.lower() == "road":
+        road = db.query(Road).filter(Road.id == id).first()
+        if not road:
+            raise HTTPException(status_code=404, detail="Road not found")
+
+        return MapPopupResponse(
+            id=road.id,
+            type="road",
+            data={
+                "id": road.id,
+                "road_id": road.road_id,
+                "unique_id": road.unique_id,
+                "road_name_en": road.road_name_en,
+                "road_name_ne": road.road_name_ne,
+                "road_type": road.road_type,
+                "road_category": road.road_category,
+                "road_class": road.road_class,
+                "road_lane": road.road_lane,
+                "road_width": road.road_width,
+                "road_length": road.road_length,
+                "direction": road.direction,
+                "ward_no": road.ward_no,
+                "remarks": road.remarks,
+                "slope_distance": road.slope_distance,
+                "attr_data": road.attr_data,
+                "timestamp": road.timestamp.isoformat() if road.timestamp else None,
+            },
+        )

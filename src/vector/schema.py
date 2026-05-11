@@ -141,3 +141,64 @@ class VectorUploadResponse(VectorLayerResponse):
 
     class Config:
         from_attributes = True
+
+
+# Map Popup Schemas
+
+
+class BuildingPopupResponse(BaseModel):
+    """Building information for map popup."""
+
+    id: int
+    building_id: Optional[int] = None
+    house_no: Optional[str] = None
+    plot_no: Optional[str] = None
+    tole_name: Optional[str] = None
+    ward_no: Optional[int] = None
+    owner_name: Optional[str] = None
+    owner_status: Optional[str] = None
+    building_use: Optional[str] = None
+    building_structure: Optional[str] = None
+    roof_type: Optional[str] = None
+    floor: Optional[float] = None
+    plinth_area: Optional[float] = None
+    road_type: Optional[str] = None
+    road_lane: Optional[str] = None
+    road_width: Optional[float] = None
+    direction: Optional[str] = None
+    reg_type: Optional[str] = None
+    plus_code: Optional[str] = None
+    metric_address: Optional[str] = None
+    remarks: Optional[str] = None
+    attr_data: Optional[dict[str, Any]] = None
+    timestamp: Optional[str] = None
+
+
+class RoadPopupResponse(BaseModel):
+    """Road information for map popup."""
+
+    id: int
+    road_id: Optional[int] = None
+    unique_id: Optional[str] = None
+    road_name_en: Optional[str] = None
+    road_name_ne: Optional[str] = None
+    road_type: Optional[str] = None
+    road_category: Optional[str] = None
+    road_class: Optional[str] = None
+    road_lane: Optional[str] = None
+    road_width: Optional[float] = None
+    road_length: Optional[float] = None
+    direction: Optional[str] = None
+    ward_no: Optional[list] = None
+    remarks: Optional[str] = None
+    slope_distance: Optional[float] = None
+    attr_data: Optional[dict[str, Any]] = None
+    timestamp: Optional[str] = None
+
+
+class MapPopupResponse(BaseModel):
+    """Generic map popup response for building or road."""
+
+    id: int
+    type: str  # "building" or "road"
+    data: Optional[dict[str, Any]] = None
