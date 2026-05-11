@@ -15,7 +15,7 @@ from src.models import Base
 from src.palika_profile.routes import router as palika_profile
 from src.roads.routes import router as roads
 from src.users.routes import router as users
-from src.raster.routes import router as raster, base_layer
+from src.raster.routes import router as raster, base_layer, tile_router
 from src.vectortile.media_routes import router as project_media
 from src.vector.routes import router as vector
 from src.palika_profile import models as palika_models
@@ -80,5 +80,6 @@ app.include_router(auth)
 app.include_router(palika_profile)
 app.include_router(raster)
 app.include_router(base_layer)
+app.include_router(tile_router)
 app.include_router(project_media)
 app.include_router(vector)

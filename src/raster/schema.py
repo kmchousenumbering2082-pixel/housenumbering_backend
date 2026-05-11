@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class RasterLayerMetadataBase(BaseModel):
@@ -11,7 +11,7 @@ class RasterLayerMetadataBase(BaseModel):
     height: Optional[int] = None
     numbands: Optional[int] = None
     srid: Optional[int] = None
-    extent: Optional[dict[str, Any]] = None
+    extent: Optional[Union[dict[str, Any], list]] = None  # Accept both dict and list
     legend: Optional[dict[str, Any]] = None
     stats: Optional[dict[str, Any]] = None
     pixel_size: Optional[float] = None

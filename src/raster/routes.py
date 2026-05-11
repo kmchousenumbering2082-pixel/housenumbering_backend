@@ -1,4 +1,5 @@
 from typing import List
+import io
 
 from pathlib import Path as FilePath
 
@@ -11,86 +12,65 @@ from fastapi import (
     UploadFile,
     Response,
     Path,
+    Query,
 )
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from osgeo import gdal, gdalconst
+from PIL import Image
+import numpy as np
 
-from src.auth.dependencies import get_current_user
 from src.database import get_db
 from src.raster import service as raster_service
 from src.raster.schema import (
     RasterLayerCreate,
     RasterLayerResponse,
-    RasterLayerUpdate,
     RasterUploadSummary,
-    BaseLayerCreate,
     BaseLayerResponse,
-    BaseLayerUpdate,
-    BaseLayerNameCreate,
-    BaseLayerNameResponse,
-    BaseLayerWithNamesResponse,
 )
 
 router = APIRouter(prefix="/api/v1/raster", tags=["Rasters"])
 base_layer = APIRouter(prefix="/api/v1/base_layers", tags=["Base Layers"])
+tile_router = APIRouter(prefix="/api/v1/tile", tags=["Tiles"])
 
 
 # ============================================================================
-# RASTER LAYER ENDPOINTS
+# RASTER UPLOAD & MANAGEMENT
 # ============================================================================
-
-
-def _process_raster_upload(
-    file_upload: UploadFile,
-    name_en: str | None,
-    name_ne: str | None,
-    display_on_map: bool,
-    is_public: bool,
-    current_user,
-    db: Session,
-):
-    """Shared upload logic for both /upload and /upload/ routes"""
-    payload = RasterLayerCreate(
-        name_en=name_en,
-        name_ne=name_ne,
-        display_on_map=display_on_map,
-        is_public=is_public,
-    )
-
-    result = raster_service.create_raster_layer(
-        db=db,
-        upload=file_upload,
-        payload=payload,
-        user_id=current_user.id if current_user else None,
-    )
-    return result
 
 
 @router.post("/upload", response_model=RasterUploadSummary)
+@router.post("/upload/", response_model=RasterUploadSummary)
 def upload_raster_file(
     file_upload: UploadFile = File(...),
     name_en: str | None = Form(None),
     name_ne: str | None = Form(None),
     display_on_map: bool = Form(default=True),
     is_public: bool = Form(default=True),
-    current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Upload a raster DEM/orthophoto file and save it with automatic metadata extraction.
+    Upload a raster file (GeoTIFF, ECW, etc.) with automatic metadata extraction.
 
     Supported formats: .tif, .tiff, .geotiff, .ecw, .vrt, .jp2, .jp2k
-
-    The endpoint will:
-    - Validate the raster file format
-    - Extract raster metadata (width, height, bands, SRID, extent)
-    - Store the file and metadata in the database
-    - Return raster details for frontend visualization
     """
-    return _process_raster_upload(
-        file_upload, name_en, name_ne, display_on_map, is_public, current_user, db
-    )
+    try:
+        payload = RasterLayerCreate(
+            name_en=name_en,
+            name_ne=name_ne,
+            display_on_map=display_on_map,
+            is_public=is_public,
+        )
+        result = raster_service.create_raster_layer(
+            db=db,
+            upload=file_upload,
+            payload=payload,
+            user_id=None,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Upload failed: {str(e)}")
 
 
 @router.get("/", response_model=List[RasterLayerResponse])
@@ -100,14 +80,7 @@ def list_raster_layers(
     public_only: bool = True,
     db: Session = Depends(get_db),
 ):
-    """
-    List all raster layers with pagination.
-
-    Args:
-        skip: Number of records to skip (default: 0)
-        limit: Maximum records to return (default: 100)
-        public_only: If True, only return public layers (default: True)
-    """
+    """List all available raster layers."""
     layers = raster_service.list_raster_layers(
         db=db,
         skip=skip,
@@ -119,14 +92,14 @@ def list_raster_layers(
 
 @router.get("/{raster_id}", response_model=RasterLayerResponse)
 def get_raster_layer(raster_id: int, db: Session = Depends(get_db)):
-    """Get a specific raster layer with its metadata."""
+    """Get raster layer metadata and details."""
     layer = raster_service.get_raster_layer(db, raster_id)
     return layer
 
 
 @router.get("/{raster_id}/file")
 def get_raster_file(raster_id: int, db: Session = Depends(get_db)):
-    """Download the uploaded raster file for client-side rendering."""
+    """Download the raster file."""
     layer = raster_service.get_raster_layer(db, raster_id)
     file_path = FilePath(layer.raster_file)
 
@@ -140,64 +113,9 @@ def get_raster_file(raster_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.patch("/{raster_id}", response_model=RasterLayerResponse)
-def update_raster_layer(
-    raster_id: int,
-    payload: RasterLayerUpdate,
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Update raster layer properties (name, status, visibility, etc.)."""
-    layer = raster_service.update_raster_layer(db, raster_id, payload)
-    return layer
-
-
-@router.delete("/{raster_id}")
-def delete_raster_layer(
-    raster_id: int,
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Delete a raster layer and its associated file."""
-    raster_service.delete_raster_layer(db, raster_id)
-    return {"message": "Raster layer deleted successfully"}
-
-
 # ============================================================================
-# BASE LAYER ENDPOINTS
+# BASE LAYERS
 # ============================================================================
-
-
-@base_layer.post("/", response_model=BaseLayerResponse)
-def create_base_layer(
-    layer_type: str = Form(...),
-    name: str | None = Form(None),
-    url: str | None = Form(None),
-    attribution: str | None = Form(None),
-    is_active: str = Form("true"),
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Create a new base layer."""
-    if not name or not name.strip():
-        raise HTTPException(status_code=400, detail="name field is required")
-
-    is_active_bool = is_active.lower() in ("true", "1", "yes")
-
-    payload = BaseLayerCreate(
-        name=name.strip(),
-        layer_type=layer_type,
-        url=url,
-        attribution=attribution,
-        is_active=is_active_bool,
-    )
-
-    layer = raster_service.create_base_layer(
-        db=db,
-        payload=payload,
-        user_id=current_user.id if current_user else None,
-    )
-    return layer
 
 
 @base_layer.get("/", response_model=List[BaseLayerResponse])
@@ -206,33 +124,9 @@ def list_base_layers(
     limit: int = 100,
     db: Session = Depends(get_db),
 ):
-    """
-    List all available base layers.
-
-    Returns base layers ordered by their display order.
-    """
+    """List all available base layers."""
     layers = raster_service.list_base_layers(db, skip=skip, limit=limit)
     return layers
-
-
-@base_layer.get("/names", response_model=List[BaseLayerWithNamesResponse])
-def list_all_base_layer_names(db: Session = Depends(get_db)):
-    """Get all base layers with their names."""
-    layers = raster_service.list_base_layers(db=db, skip=0, limit=9999)
-    result = []
-    for layer in layers:
-        layer_dict = {
-            "id": layer.id,
-            "name": layer.name,
-            "layer_type": layer.layer_type,
-            "url": layer.url,
-            "attribution": layer.attribution,
-            "is_active": layer.is_active,
-            "timestamp": layer.timestamp,
-            "names": raster_service.get_base_layer_names(db=db, layer_id=layer.id),
-        }
-        result.append(layer_dict)
-    return result
 
 
 @base_layer.get("/{layer_id}", response_model=BaseLayerResponse)
@@ -242,32 +136,9 @@ def get_base_layer(layer_id: int, db: Session = Depends(get_db)):
     return layer
 
 
-@base_layer.patch("/{layer_id}", response_model=BaseLayerResponse)
-def update_base_layer(
-    layer_id: int,
-    payload: BaseLayerUpdate,
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Update a base layer's properties."""
-    layer = raster_service.update_base_layer(db, layer_id, payload)
-    return layer
-
-
-@base_layer.delete("/{layer_id}")
-def delete_base_layer(
-    layer_id: int,
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Delete a base layer."""
-    raster_service.delete_base_layer(db, layer_id)
-    return {"message": "Base layer deleted successfully"}
-
-
-# =============================================================================
-# VECTOR TILE ENDPOINTS
-# =============================================================================
+# ============================================================================
+# VECTOR TILES (BUILDINGS & ROADS)
+# ============================================================================
 
 _BUILDING_MVT_SQL = text("""
     WITH bounds AS (
@@ -291,7 +162,7 @@ _BUILDING_MVT_SQL = text("""
         JOIN bounds ON ST_Intersects(ST_Transform(bg.geom, 3857), bounds.geom)
         WHERE bg.geom IS NOT NULL
           AND COALESCE(bg.is_deleted, false) = false
-            AND (
+          AND (
                 :ward_nos IS NULL
                 OR b.ward_no::text = ANY(string_to_array(:ward_nos, ','))
             )
@@ -336,9 +207,9 @@ _ROAD_MVT_SQL = text("""
 
 
 def _normalize_ward_nos(ward_no: str | None) -> str | None:
+    """Parse and normalize comma-separated ward numbers."""
     if ward_no is None:
         return None
-
     values = [part.strip() for part in ward_no.split(",") if part.strip()]
     return ",".join(values) if values else None
 
@@ -346,23 +217,21 @@ def _normalize_ward_nos(ward_no: str | None) -> str | None:
 def _fetch_building_tile(
     db: Session, z: int, x: int, y: int, ward_nos: str | None = None
 ) -> bytes:
+    """Fetch building vector tile."""
     result = db.execute(
         _BUILDING_MVT_SQL, {"z": z, "x": x, "y": y, "ward_nos": ward_nos}
     ).scalar()
-    if result is None:
-        return b""
-    return bytes(result)
+    return bytes(result) if result else b""
 
 
 def _fetch_road_tile(
     db: Session, z: int, x: int, y: int, ward_nos: str | None = None
 ) -> bytes:
+    """Fetch road vector tile."""
     result = db.execute(
         _ROAD_MVT_SQL, {"z": z, "x": x, "y": y, "ward_nos": ward_nos}
     ).scalar()
-    if result is None:
-        return b""
-    return bytes(result)
+    return bytes(result) if result else b""
 
 
 @router.get("/building_vector_tile/{z}/{x}/{y}")
@@ -373,12 +242,12 @@ def get_building_vector_tile(
     ward_no: str | None = None,
     db: Session = Depends(get_db),
 ):
+    """Get building vector tile."""
     max_index = (1 << z) - 1
     if x > max_index or y > max_index:
         raise HTTPException(
             status_code=400, detail="Tile x/y is out of range for zoom level"
         )
-
     ward_nos = _normalize_ward_nos(ward_no)
     tile_bytes = _fetch_building_tile(db, z, x, y, ward_nos)
     return Response(content=tile_bytes, media_type="application/vnd.mapbox-vector-tile")
@@ -392,18 +261,121 @@ def get_road_vector_tile(
     ward_no: str | None = None,
     db: Session = Depends(get_db),
 ):
+    """Get road vector tile."""
     max_index = (1 << z) - 1
     if x > max_index or y > max_index:
         raise HTTPException(
             status_code=400, detail="Tile x/y is out of range for zoom level"
         )
-
     ward_nos = _normalize_ward_nos(ward_no)
     tile_bytes = _fetch_road_tile(db, z, x, y, ward_nos)
     return Response(content=tile_bytes, media_type="application/vnd.mapbox-vector-tile")
 
 
-@base_layer.post("/names", response_model=BaseLayerNameResponse)
-def create_base_layer_name(payload: BaseLayerNameCreate, db: Session = Depends(get_db)):
-    """Create a new base layer name."""
-    return raster_service.create_base_layer_name(db=db, payload=payload)
+# ============================================================================
+# RASTER TILE SERVING
+# ============================================================================
+
+
+def _mercator_tile_to_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
+    """Convert Web Mercator tile coordinates to geographic bounding box (EPSG:3857)."""
+    n = 2.0**z
+    pixel_size = 20037508.34 * 2 / (256 * n)
+    minx = -20037508.34 + (x * 256 * pixel_size)
+    maxy = 20037508.34 - (y * 256 * pixel_size)
+    maxx = minx + (256 * pixel_size)
+    miny = maxy - (256 * pixel_size)
+    return minx, miny, maxx, maxy
+
+
+def _extract_raster_tile(raster_path: str, z: int, x: int, y: int) -> bytes:
+    """Extract a 256x256 PNG tile from raster at given Web Mercator coordinates."""
+    try:
+        dataset = gdal.Open(str(raster_path), gdalconst.GA_ReadOnly)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="Cannot open raster file")
+
+        geo_transform = dataset.GetGeoTransform()
+        raster_width = dataset.RasterXSize
+        raster_height = dataset.RasterYSize
+        band_count = dataset.RasterCount
+
+        minx, miny, maxx, maxy = _mercator_tile_to_bbox(z, x, y)
+
+        px_min = int((minx - geo_transform[0]) / geo_transform[1])
+        py_max = int((maxy - geo_transform[3]) / geo_transform[5])
+        px_max = int((maxx - geo_transform[0]) / geo_transform[1])
+        py_min = int((miny - geo_transform[3]) / geo_transform[5])
+
+        px_min = max(0, min(px_min, raster_width - 1))
+        px_max = max(0, min(px_max, raster_width))
+        py_min = max(0, min(py_min, raster_height - 1))
+        py_max = max(0, min(py_max, raster_height))
+
+        width = max(0, px_max - px_min)
+        height = max(0, py_max - py_min)
+
+        if width == 0 or height == 0:
+            img = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            return buffer.getvalue()
+
+        if band_count == 1:
+            band = dataset.GetRasterBand(1)
+            data = band.ReadArray(px_min, py_min, width, height)
+            img_data = np.stack([data, data, data], axis=2)
+        elif band_count >= 3:
+            r_band = dataset.GetRasterBand(1)
+            g_band = dataset.GetRasterBand(2)
+            b_band = dataset.GetRasterBand(3)
+
+            r = r_band.ReadArray(px_min, py_min, width, height)
+            g = g_band.ReadArray(px_min, py_min, width, height)
+            b = b_band.ReadArray(px_min, py_min, width, height)
+
+            img_data = np.stack([r, g, b], axis=2)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported raster format")
+
+        if img_data.dtype != np.uint8:
+            img_data = np.uint8(np.clip(img_data / img_data.max() * 255, 0, 255))
+
+        img = Image.fromarray(img_data)
+        img = img.resize((256, 256), Image.Resampling.LANCZOS)
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        dataset = None
+
+        return buffer.getvalue()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error extracting tile: {str(e)}")
+
+
+@tile_router.get("/raster-tiles/{z}/{x}/{y}.png")
+def get_raster_tile(
+    z: int = Path(..., ge=0, le=28),
+    x: int = Path(...),
+    y: int = Path(...),
+    raster_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Serve a raster tile at specified Web Mercator coordinates."""
+    max_tile = 2**z
+    if x < 0 or x >= max_tile or y < 0 or y >= max_tile:
+        raise HTTPException(
+            status_code=400, detail="Tile x/y out of range for zoom level"
+        )
+
+    raster = raster_service.get_raster_layer(db, raster_id)
+    if not raster:
+        raise HTTPException(status_code=404, detail="Raster not found")
+
+    raster_path = FilePath(raster.raster_file)
+    if not raster_path.exists():
+        raise HTTPException(status_code=404, detail="Raster file not found")
+
+    tile_bytes = _extract_raster_tile(str(raster_path), z, x, y)
+    return Response(content=tile_bytes, media_type="image/png")
