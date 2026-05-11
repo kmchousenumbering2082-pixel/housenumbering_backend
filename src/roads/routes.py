@@ -36,16 +36,21 @@ def get_roads_count_route(
     road_category: Optional[RoadCategory] = Query(default=None),
     road_class: Optional[RoadClass] = Query(default=None),
     road_lane: Optional[RoadLane] = Query(default=None),
-    ward_no: Optional[int] = Query(default=None),
+    ward_no: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    # Parse comma-separated ward numbers
+    ward_nos = None
+    if ward_no:
+        ward_nos = [int(w.strip()) for w in ward_no.split(",") if w.strip()]
+
     count = count_roads(
         db=db,
         road_type=road_type,
         road_category=road_category,
         road_class=road_class,
         road_lane=road_lane,
-        ward_no=ward_no,
+        ward_nos=ward_nos,
     )
     return {"count": count}
 

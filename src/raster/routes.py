@@ -324,7 +324,10 @@ _ROAD_MVT_SQL = text("""
           AND COALESCE(rg.is_deleted, false) = false
           AND (
                 :ward_nos IS NULL
-                OR r.ward_no::text = ANY(string_to_array(:ward_nos, ','))
+                OR EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(r.ward_no) AS elem
+                    WHERE (elem::text)::int = ANY(string_to_array(:ward_nos, ',')::int[])
+                )
           )
     )
     SELECT COALESCE(ST_AsMVT(tile_features, 'roads', 4096, 'geom'), '\\x'::bytea) AS tile

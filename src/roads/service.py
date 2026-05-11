@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import cast
+from sqlalchemy import cast, or_, text
 from sqlalchemy.types import Integer as SQLInteger
+from sqlalchemy.dialects.postgresql import JSON
 
 from src.enums.roads import RoadCategory, RoadClass, RoadLane, RoadType
 from src.models import Road
@@ -25,12 +26,15 @@ def count_roads(
     road_category: Optional[RoadCategory] = None,
     road_class: Optional[RoadClass] = None,
     road_lane: Optional[RoadLane] = None,
-    ward_no: Optional[int] = None,
+    ward_nos: Optional[List[int]] = None,
 ) -> int:
     query = db.query(Road)
 
-    if ward_no is not None:
-        query = query.filter(cast(Road.ward_no, SQLInteger) == ward_no)
+    if ward_nos is not None and len(ward_nos) > 0:
+        # ward_no is stored as JSONB array, check if it contains any of the values
+        # Use OR to check if array contains any of the ward numbers
+        conditions = [Road.ward_no.op("@>")(f"[{ward}]") for ward in ward_nos]
+        query = query.filter(or_(*conditions))
     if road_type is not None:
         query = query.filter(Road.road_type == road_type.value)
     if road_category is not None:
