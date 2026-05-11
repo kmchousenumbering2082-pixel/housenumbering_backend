@@ -92,7 +92,25 @@ def _geometry_to_string(geom) -> str | None:
 
 
 def _build_layer_response(layer) -> VectorLayerResponse:
-    """Convert VectorLayer model to response with usernames resolved."""
+    """Convert VectorLayer model to response with usernames resolved (without features)."""
+    return VectorLayerResponse(
+        id=layer.id,
+        name_en=layer.name_en,
+        name_ne=layer.name_ne,
+        layer_type=layer.layer_type,
+        attr_data=layer.attr_data,
+        style_value=layer.style_value,
+        label_value=layer.label_value,
+        is_public=layer.is_public,
+        display_on_map=layer.display_on_map,
+        created_by=_get_username(layer.created_by_user),
+        updated_by=_get_username(layer.updated_by_user),
+        timestamp=layer.timestamp,
+    )
+
+
+def _build_layer_detail_response(layer) -> VectorLayerDetailResponse:
+    """Convert VectorLayer model to detailed response with features."""
     features_list = []
     if layer.features:
         for feat in layer.features:
@@ -111,7 +129,7 @@ def _build_layer_response(layer) -> VectorLayerResponse:
                 )
             )
 
-    return VectorLayerResponse(
+    return VectorLayerDetailResponse(
         id=layer.id,
         name_en=layer.name_en,
         name_ne=layer.name_ne,
@@ -340,7 +358,7 @@ def get_layer(
         ]
         db_layer.features = filtered_features
 
-    return _build_layer_response(db_layer)
+    return _build_layer_detail_response(db_layer)
 
 
 @router.patch("/layers/{layer_id}", response_model=VectorLayerResponse)

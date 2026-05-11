@@ -94,7 +94,7 @@ class VectorLayerResponse(VectorLayerBase):
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
     timestamp: Optional[datetime] = None
-    features: list[FeatureCollectionResponse] = []
+    # features: list[FeatureCollectionResponse] = []
 
     class Config:
         from_attributes = False
