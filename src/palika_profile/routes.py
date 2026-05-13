@@ -145,9 +145,21 @@ def upload_palika_ward_geometry_file(
     )
 
 
+@router.get("/geometries", response_model=List[PalikaGeometryResponse])
+def list_palika_geometries(db: Session = Depends(get_db)):
+    """List all available palika geometries with their IDs."""
+    return palika_service.list_palika_geometries(db=db)
+
+
 @router.get("/geometries/current", response_model=PalikaGeometryResponse)
 def get_palika_geometry(db: Session = Depends(get_db)):
     return palika_service.get_palika_geometry(db=db)
+
+
+@router.get("/geometries/{geometry_id}", response_model=PalikaGeometryResponse)
+def get_palika_geometry_by_id(geometry_id: int, db: Session = Depends(get_db)):
+    """Retrieve a specific palika geometry by its ID."""
+    return palika_service.get_palika_geometry(db=db, geometry_id=geometry_id)
 
 
 @router.get("/ward_geometries", response_model=List[PalikaWardGeometryResponse])

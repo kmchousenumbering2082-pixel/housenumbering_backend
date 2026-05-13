@@ -167,9 +167,8 @@ def _upsert_file_record(
 
 def _upsert_palika_geometry(db: Session, gdf: gpd.GeoDataFrame) -> PalikaGeometry:
     metric_gdf = gdf.to_crs(epsg=3857)
-    row = db.query(PalikaGeometry).first() or PalikaGeometry()
-    if row.id is None:
-        db.add(row)
+    row = PalikaGeometry()
+    db.add(row)
 
     row.area = float(metric_gdf.geometry.area.sum())
     row.bbox = {"type": "bbox", "coordinates": gdf.total_bounds.tolist()}
@@ -342,10 +341,28 @@ def _ward_geometry_to_dict(geom_obj) -> dict:
     }
 
 
-def get_palika_geometry(db: Session) -> dict:
-    row = db.query(PalikaGeometry).first()
+def list_palika_geometries(db: Session) -> list[dict]:
+    """List all available palika geometries with their IDs."""
+    rows = db.query(PalikaGeometry).all()
+    return [_geometry_to_dict(row) for row in rows]
+
+
+def get_palika_geometry(db: Session, geometry_id: int | None = None) -> dict:
+    """Get palika geometry by ID or return the first one if ID not specified."""
+    query = db.query(PalikaGeometry)
+
+    if geometry_id is not None:
+        row = query.filter(PalikaGeometry.id == geometry_id).first()
+    else:
+        row = query.first()
+
     if not row:
-        raise HTTPException(status_code=404, detail="Palika geometry not found")
+        detail = (
+            f"Palika geometry with ID {geometry_id} not found"
+            if geometry_id
+            else "Palika geometry not found"
+        )
+        raise HTTPException(status_code=404, detail=detail)
     return _geometry_to_dict(row)
 
 
