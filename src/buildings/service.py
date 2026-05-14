@@ -8,6 +8,22 @@ from src.enums.buildings import RoofType
 from src.models import Building, Road
 
 from src.buildings.schema import BuildingCreate
+from src.utils.pluscode import encode as encode_plus_code
+
+
+def _compute_plus_code(
+    lat_value: Optional[str], long_value: Optional[str]
+) -> Optional[str]:
+    if lat_value is None or long_value is None:
+        return None
+
+    try:
+        latitude = float(lat_value)
+        longitude = float(long_value)
+    except (TypeError, ValueError):
+        return None
+
+    return encode_plus_code(latitude, longitude)
 
 
 def _validate_road_id(db: Session, road_id: Optional[int]) -> None:
@@ -22,6 +38,12 @@ def _validate_road_id(db: Session, road_id: Optional[int]) -> None:
 def create_building(db: Session, building_data: BuildingCreate) -> Building:
     payload = building_data.model_dump(exclude_unset=True)
     _validate_road_id(db, payload.get("road_id"))
+
+    computed_plus_code = _compute_plus_code(
+        payload.get("lat_field"), payload.get("long_field")
+    )
+    if computed_plus_code:
+        payload["plus_code"] = computed_plus_code
 
     db_building = Building(**payload)
     db.add(db_building)
@@ -163,11 +185,57 @@ def update_building(
     update_data = building_data.model_dump(exclude_unset=True)
     _validate_road_id(db, update_data.get("road_id"))
 
+    computed_plus_code = _compute_plus_code(
+        update_data.get("lat_field", building.lat_field),
+        update_data.get("long_field", building.long_field),
+    )
+    if computed_plus_code:
+        update_data["plus_code"] = computed_plus_code
+
     for key, value in update_data.items():
         setattr(building, key, value)
     db.commit()
     db.refresh(building)
     return building
+
+
+def update_building_plus_code(db: Session, building_id: int) -> Building:
+    building = get_building(db=db, building_id=building_id)
+    computed_plus_code = _compute_plus_code(building.lat_field, building.long_field)
+
+    if not computed_plus_code:
+        raise HTTPException(
+            status_code=400,
+            detail="Building does not have valid lat_field and long_field values",
+        )
+
+    building.plus_code = computed_plus_code
+    db.commit()
+    db.refresh(building)
+    return building
+
+
+def bulk_update_building_plus_codes(db: Session) -> dict:
+    buildings = db.query(Building).all()
+    updated_count = 0
+    skipped_count = 0
+
+    for building in buildings:
+        computed_plus_code = _compute_plus_code(building.lat_field, building.long_field)
+        if not computed_plus_code:
+            skipped_count += 1
+            continue
+
+        building.plus_code = computed_plus_code
+        updated_count += 1
+
+    db.commit()
+
+    return {
+        "total_buildings": len(buildings),
+        "updated_buildings": updated_count,
+        "skipped_buildings": skipped_count,
+    }
 
 
 def delete_building(db: Session, building_id: int) -> None:

@@ -50,6 +50,7 @@ class BuildingResponse(BaseModel):
     lat_field: Optional[str]
     long_field: Optional[str]
     ward_no: Optional[int]
+    plus_code: Optional[str] = None
     road: Optional[RoadResponse] = None
 
     class Config:

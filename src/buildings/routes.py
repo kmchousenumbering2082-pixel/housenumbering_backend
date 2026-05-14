@@ -15,6 +15,7 @@ from src.buildings.schema import (
 )
 from src.buildings.service import (
     assign_roads_to_all_buildings,
+    bulk_update_building_plus_codes,
     count_buildings,
     create_building,
     delete_building,
@@ -22,6 +23,7 @@ from src.buildings.service import (
     list_buildings,
     list_public_buildings,
     update_building,
+    update_building_plus_code,
 )
 
 router = APIRouter(prefix="/api/v1/building", tags=["buildings"])
@@ -116,6 +118,23 @@ def delete_building_route(
 ):
     delete_building(db=db, building_id=building_id)
     return {"detail": "Building deleted"}
+
+
+@router.post("/plus_code/bulk/")
+def bulk_update_building_plus_code_route(
+    _=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return bulk_update_building_plus_codes(db=db)
+
+
+@router.post("/plus_code/{building_id}", response_model=BuildingResponse)
+def update_building_plus_code_route(
+    building_id: int,
+    _=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return update_building_plus_code(db=db, building_id=building_id)
 
 
 @router.post("/assign_road")
