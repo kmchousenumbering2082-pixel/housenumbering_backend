@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from src.auth.dependencies import get_current_user
@@ -8,13 +8,19 @@ from src.database import get_db
 from src.enums.roads import RoadCategory, RoadClass, RoadLane, RoadType
 from src.pagination import Pagination
 
-from src.roads.schema import RoadCreate, RoadResponse, RoadUpdate
+from src.roads.schema import (
+    RoadCreate,
+    RoadPublicPageResponse,
+    RoadResponse,
+    RoadUpdate,
+)
 from src.roads.service import (
     count_roads,
     create_road,
     delete_road,
     get_road,
     list_roads,
+    list_public_roads,
     update_road,
 )
 
@@ -116,3 +122,41 @@ def delete_road_route(
 ):
     delete_road(db=db, road_id=road_id)
     return {"detail": "Road deleted"}
+
+
+@router.get("/road_data/", response_model=RoadPublicPageResponse)
+def public_road_data_route(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    search: Optional[str] = Query(
+        default=None,
+        description="Search by road name, road type, road category, road class, lane, or road id",
+    ),
+    db: Session = Depends(get_db),
+):
+    count, results = list_public_roads(
+        db=db,
+        page=page,
+        page_size=page_size,
+        search=search,
+    )
+
+    next_url = None
+    previous_url = None
+
+    if page * page_size < count:
+        next_url = str(
+            request.url.include_query_params(page=page + 1, page_size=page_size)
+        )
+    if page > 1 and count > 0:
+        previous_url = str(
+            request.url.include_query_params(page=page - 1, page_size=page_size)
+        )
+
+    return {
+        "count": count,
+        "next": next_url,
+        "previous": previous_url,
+        "results": results,
+    }

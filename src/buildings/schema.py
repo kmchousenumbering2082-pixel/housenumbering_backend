@@ -1,7 +1,9 @@
+from typing import Any, List, Optional
+
 from pydantic import BaseModel
-from typing import Optional
 
 from src.roads.schema import RoadResponse
+
 
 class BuildingCreate(BaseModel):
     building_id: Optional[int]
@@ -34,9 +36,11 @@ class BuildingCreate(BaseModel):
     plus_code: Optional[str]
     bbox: Optional[dict]
 
+
 class BuildingGeometryCreate(BaseModel):
     building_id: int
-    geom: Optional[str] 
+    geom: Optional[str]
+
 
 class BuildingResponse(BaseModel):
     building_id: Optional[int]
@@ -50,6 +54,28 @@ class BuildingResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BuildingPublicItemResponse(BaseModel):
+    id: int
+    building_id: Optional[int] = None
+    ward_no: Optional[int] = None
+    plus_code: Optional[str] = None
+    house_no: Optional[str] = None
+    association_type: Optional[str] = None
+    associate_road_name: Optional[str] = None
+    bbox: Optional[Any] = None
+
+    class Config:
+        from_attributes = True
+
+
+class BuildingPublicPageResponse(BaseModel):
+    count: int
+    next: Optional[str] = None
+    previous: Optional[str] = None
+    results: List[BuildingPublicItemResponse]
+
 
 class BuildingGeometryResponse(BaseModel):
     id: int

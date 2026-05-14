@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import text
+from sqlalchemy import func, or_, text
 
 from src.enums.buildings import RoofType
 from src.models import Building, Road
@@ -48,6 +48,58 @@ def count_buildings(
     return query.count()
 
 
+def search_buildings(query, search: Optional[str]):
+    search_query = (search or "").strip()
+    if not search_query:
+        return query
+
+    if "-" in search_query:
+        house_no, other_info = map(str.strip, search_query.split("-", 1))
+        if not house_no or not other_info:
+            return query.filter(
+                or_(
+                    Building.house_no.ilike(f"%{search_query}%"),
+                    Building.tole_name.ilike(f"%{search_query}%"),
+                    Building.owner_name.ilike(f"%{search_query}%"),
+                    Building.plus_code.ilike(f"%{search_query}%"),
+                    Building.road.has(Road.road_name_en.ilike(f"%{search_query}%")),
+                )
+            )
+
+        return query.filter(
+            Building.house_no.isnot(None),
+            func.lower(Building.house_no) == house_no.lower(),
+            or_(
+                func.lower(Building.tole_name) == other_info.lower(),
+                Building.road.has(func.lower(Road.road_name_en) == other_info.lower()),
+            ),
+        )
+
+    return query.filter(
+        or_(
+            Building.house_no.ilike(f"%{search_query}%"),
+            Building.tole_name.ilike(f"%{search_query}%"),
+            Building.owner_name.ilike(f"%{search_query}%"),
+            Building.plus_code.ilike(f"%{search_query}%"),
+            Building.road.has(Road.road_name_en.ilike(f"%{search_query}%")),
+        )
+    )
+
+
+def _public_building_item(building: Building) -> dict:
+    road = building.road
+    return {
+        "id": building.id,
+        "building_id": building.building_id,
+        "ward_no": building.ward_no,
+        "plus_code": building.plus_code,
+        "house_no": building.house_no,
+        "association_type": building.association_type,
+        "associate_road_name": road.road_name_en if road else None,
+        "bbox": building.bbox,
+    }
+
+
 def list_buildings(
     db: Session,
     skip: int = 0,
@@ -55,6 +107,7 @@ def list_buildings(
     ward_no: Optional[int] = None,
     min_floor: Optional[float] = None,
     roof_type: Optional[RoofType] = None,
+    search: Optional[str] = None,
     sort_by: str = "building_id",
     order: str = "asc",
 ):
@@ -67,10 +120,28 @@ def list_buildings(
     if roof_type is not None:
         query = query.filter(Building.roof_type == roof_type.value)
 
+    query = search_buildings(query, search)
+
     sort_column = getattr(Building, sort_by, Building.building_id)
     query = query.order_by(sort_column.desc() if order == "desc" else sort_column.asc())
 
     return query.offset(skip).limit(limit).all()
+
+
+def list_public_buildings(
+    db: Session,
+    page: int = 1,
+    page_size: int = 10,
+    search: Optional[str] = None,
+):
+    query = db.query(Building).options(joinedload(Building.road))
+    query = search_buildings(query, search)
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    buildings = query.order_by(Building.id.desc()).offset(offset).limit(page_size).all()
+
+    return total, [_public_building_item(building) for building in buildings]
 
 
 def get_building(db: Session, building_id: int) -> Building:
