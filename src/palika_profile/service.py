@@ -166,11 +166,11 @@ def _upsert_file_record(
 
 
 def _upsert_palika_geometry(db: Session, gdf: gpd.GeoDataFrame) -> PalikaGeometry:
-    metric_gdf = gdf.to_crs(epsg=3857)
+    metric_gdf = gdf.to_crs(epsg=32645)
     row = PalikaGeometry()
     db.add(row)
 
-    row.area = float(metric_gdf.geometry.area.sum())
+    row.area = float(metric_gdf.geometry.area.sum() / 1_000_000)
     row.bbox = {"type": "bbox", "coordinates": gdf.total_bounds.tolist()}
     row.geom = from_shape(_to_multipolygon(gdf.geometry.tolist()), srid=4326)
     db.flush()
@@ -215,7 +215,7 @@ def _upsert_ward_geometries(
         if ward_no is None:
             continue
 
-        metric_group = group.to_crs(epsg=3857)
+        metric_group = group.to_crs(epsg=32645)
         row = (
             db.query(PalikaWardGeometry)
             .filter(PalikaWardGeometry.ward_no == ward_no)
@@ -226,7 +226,7 @@ def _upsert_ward_geometries(
             db.add(row)
 
         row.numbering_status = numbering_status or row.numbering_status
-        row.area = float(metric_group.geometry.area.sum())
+        row.area = float(metric_group.geometry.area.sum() / 1_000_000)
         row.bbox = {"type": "bbox", "coordinates": group.total_bounds.tolist()}
         row.geom = from_shape(_to_multipolygon(group.geometry.tolist()), srid=4326)
         db.flush()
