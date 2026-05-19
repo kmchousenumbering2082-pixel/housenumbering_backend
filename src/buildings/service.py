@@ -98,6 +98,7 @@ def search_buildings(query, search: Optional[str]):
             filters.append(Building.tole_name.ilike(f"%{other_info}%"))
             filters.append(Building.owner_name.ilike(f"%{other_info}%"))
             filters.append(Building.plus_code.ilike(f"%{other_info}%"))
+            filters.append(Building.metric_address.ilike(f"%{other_info}%"))
             filters.append(
                 Building.road.has(Road.road_name_en.ilike(f"%{other_info}%"))
             )
@@ -114,6 +115,7 @@ def search_buildings(query, search: Optional[str]):
             Building.tole_name.ilike(f"%{search_query}%"),
             Building.owner_name.ilike(f"%{search_query}%"),
             Building.plus_code.ilike(f"%{search_query}%"),
+            Building.metric_address.ilike(f"%{search_query}%"),
             Building.road.has(Road.road_name_en.ilike(f"%{search_query}%")),
         )
     )
