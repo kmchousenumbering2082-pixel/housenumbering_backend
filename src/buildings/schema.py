@@ -45,6 +45,7 @@ class BuildingGeometryCreate(BaseModel):
 class BuildingResponse(BaseModel):
     building_id: Optional[int]
     road_id: Optional[int]
+    house_no: Optional[str]
     roof_type: Optional[str]
     plinth_area: Optional[float]
     lat_field: Optional[str]

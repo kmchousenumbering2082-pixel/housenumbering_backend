@@ -77,25 +77,36 @@ def search_buildings(query, search: Optional[str]):
 
     if "-" in search_query:
         house_no, other_info = map(str.strip, search_query.split("-", 1))
-        if not house_no or not other_info:
+        # If both sides present use exact-match semantics (house_no + tole/road)
+        if house_no and other_info:
             return query.filter(
+                Building.house_no.isnot(None),
+                func.lower(Building.house_no) == house_no.lower(),
                 or_(
-                    Building.house_no.ilike(f"%{search_query}%"),
-                    Building.tole_name.ilike(f"%{search_query}%"),
-                    Building.owner_name.ilike(f"%{search_query}%"),
-                    Building.plus_code.ilike(f"%{search_query}%"),
-                    Building.road.has(Road.road_name_en.ilike(f"%{search_query}%")),
-                )
+                    func.lower(Building.tole_name) == other_info.lower(),
+                    Building.road.has(
+                        func.lower(Road.road_name_en) == other_info.lower()
+                    ),
+                ),
             )
 
-        return query.filter(
-            Building.house_no.isnot(None),
-            func.lower(Building.house_no) == house_no.lower(),
-            or_(
-                func.lower(Building.tole_name) == other_info.lower(),
-                Building.road.has(func.lower(Road.road_name_en) == other_info.lower()),
-            ),
-        )
+        # If one side is missing, search each available part separately
+        filters = []
+        if house_no:
+            filters.append(Building.house_no.ilike(f"%{house_no}%"))
+        if other_info:
+            filters.append(Building.tole_name.ilike(f"%{other_info}%"))
+            filters.append(Building.owner_name.ilike(f"%{other_info}%"))
+            filters.append(Building.plus_code.ilike(f"%{other_info}%"))
+            filters.append(
+                Building.road.has(Road.road_name_en.ilike(f"%{other_info}%"))
+            )
+
+        # Fallback: if nothing parsed, return original query
+        if not filters:
+            return query
+
+        return query.filter(or_(*filters))
 
     return query.filter(
         or_(
