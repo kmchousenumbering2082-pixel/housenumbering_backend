@@ -20,6 +20,8 @@ from sqlalchemy import text
 from osgeo import gdal, gdalconst
 from PIL import Image
 import numpy as np
+import rasterio
+from rasterio.windows import Window
 
 from src.database import get_db
 from src.raster import service as raster_service
@@ -29,6 +31,10 @@ from src.raster.schema import (
     RasterUploadSummary,
     BaseLayerResponse,
 )
+from rasterio.vrt import WarpedVRT
+from rasterio.enums import Resampling
+from rasterio.windows import from_bounds
+from affine import Affine
 
 router = APIRouter(prefix="/api/v1/raster", tags=["Rasters"])
 base_layer = APIRouter(prefix="/api/v1/base_layers", tags=["Base Layers"])
@@ -152,19 +158,20 @@ _BUILDING_MVT_SQL = text("""
             b.floor,
             ST_AsMVTGeom(
                 ST_Transform(bg.geom, 3857),
-                bounds.geom,
+                (SELECT geom FROM bounds),
                 4096,
                 256,
                 true
             ) AS geom
         FROM building_geometry bg
         JOIN buildings b ON b.id = bg.building_id
-        JOIN bounds ON ST_Intersects(ST_Transform(bg.geom, 3857), bounds.geom)
         WHERE bg.geom IS NOT NULL
           AND COALESCE(bg.is_deleted, false) = false
+          AND ST_Intersects(ST_Transform(bg.geom, 3857), (SELECT geom FROM bounds))
           AND (
                 :ward_nos IS NULL
-                OR b.ward_no::text = ANY(string_to_array(:ward_nos, ','))
+                OR b.ward_no IS NULL
+                OR b.ward_no = ANY(string_to_array(:ward_nos, ',')::int[])
             )
     )
     SELECT COALESCE(ST_AsMVT(tile_features, 'buildings', 4096, 'geom'), '\\x'::bytea) AS tile
@@ -181,6 +188,7 @@ _ROAD_MVT_SQL = text("""
             r.road_id,
             r.ward_no,
             r.road_type,
+            r.road_class,
             ST_AsMVTGeom(
                 ST_Transform(rg.geom, 3857),
                 bounds.geom,
@@ -288,70 +296,87 @@ def _mercator_tile_to_bbox(z: int, x: int, y: int) -> tuple[float, float, float,
     return minx, miny, maxx, maxy
 
 
+def _normalize_raster_data(data: np.ndarray) -> np.ndarray:
+    """Normalize raster data to uint8 (0-255) using percentile clipping for better contrast."""
+    if data.size == 0:
+        return np.zeros((256, 256, 3), dtype=np.uint8)
+
+    # Check if already uint8
+    if data.dtype == np.uint8:
+        return data
+
+    data = data.astype(np.float64)
+
+    # Use percentile-based clipping for better contrast
+    p2, p98 = np.percentile(data, [2, 98])
+
+    # Handle edge cases
+    if np.isnan(p2) or np.isnan(p98) or p2 == p98:
+        return np.full_like(data, 128, dtype=np.uint8)
+
+    # Clip and normalize
+    data_clipped = np.clip(data, p2, p98)
+    data_normalized = ((data_clipped - p2) / (p98 - p2)) * 255
+
+    return np.uint8(data_normalized)
+
+
 def _extract_raster_tile(raster_path: str, z: int, x: int, y: int) -> bytes:
-    """Extract a 256x256 PNG tile from raster at given Web Mercator coordinates."""
     try:
-        dataset = gdal.Open(str(raster_path), gdalconst.GA_ReadOnly)
-        if dataset is None:
-            raise HTTPException(status_code=404, detail="Cannot open raster file")
+        with rasterio.open(raster_path) as src:
 
-        geo_transform = dataset.GetGeoTransform()
-        raster_width = dataset.RasterXSize
-        raster_height = dataset.RasterYSize
-        band_count = dataset.RasterCount
+            # Tile bounds in EPSG:3857
+            minx, miny, maxx, maxy = _mercator_tile_to_bbox(z, x, y)
 
-        minx, miny, maxx, maxy = _mercator_tile_to_bbox(z, x, y)
+            # Resolution per pixel
+            res = (maxx - minx) / 256
 
-        px_min = int((minx - geo_transform[0]) / geo_transform[1])
-        py_max = int((maxy - geo_transform[3]) / geo_transform[5])
-        px_max = int((maxx - geo_transform[0]) / geo_transform[1])
-        py_min = int((miny - geo_transform[3]) / geo_transform[5])
+            # Proper tile transform
+            dst_transform = rasterio.transform.from_bounds(
+                minx,
+                miny,
+                maxx,
+                maxy,
+                256,
+                256,
+            )
 
-        px_min = max(0, min(px_min, raster_width - 1))
-        px_max = max(0, min(px_max, raster_width))
-        py_min = max(0, min(py_min, raster_height - 1))
-        py_max = max(0, min(py_max, raster_height))
+            # Warp raster dynamically into WebMercator
+            with WarpedVRT(
+                src,
+                crs="EPSG:3857",
+                transform=dst_transform,
+                width=256,
+                height=256,
+                resampling=Resampling.bilinear,
+            ) as vrt:
 
-        width = max(0, px_max - px_min)
-        height = max(0, py_max - py_min)
+                data = vrt.read(out_shape=(vrt.count, 256, 256))
 
-        if width == 0 or height == 0:
-            img = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
-            buffer = io.BytesIO()
-            img.save(buffer, format="PNG")
-            return buffer.getvalue()
+                if data.size == 0:
+                    img = Image.new("RGB", (256, 256), (200, 200, 200))
+                else:
 
-        if band_count == 1:
-            band = dataset.GetRasterBand(1)
-            data = band.ReadArray(px_min, py_min, width, height)
-            img_data = np.stack([data, data, data], axis=2)
-        elif band_count >= 3:
-            r_band = dataset.GetRasterBand(1)
-            g_band = dataset.GetRasterBand(2)
-            b_band = dataset.GetRasterBand(3)
+                    # RGB
+                    if vrt.count >= 3:
+                        img_array = np.transpose(data[:3], (1, 2, 0))
+                    else:
+                        band = data[0]
+                        img_array = np.stack([band] * 3, axis=-1)
 
-            r = r_band.ReadArray(px_min, py_min, width, height)
-            g = g_band.ReadArray(px_min, py_min, width, height)
-            b = b_band.ReadArray(px_min, py_min, width, height)
+                    # Normalize
+                    if img_array.dtype != np.uint8:
+                        img_array = np.clip(img_array, 0, 255).astype(np.uint8)
 
-            img_data = np.stack([r, g, b], axis=2)
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported raster format")
+                    img = Image.fromarray(img_array)
 
-        if img_data.dtype != np.uint8:
-            img_data = np.uint8(np.clip(img_data / img_data.max() * 255, 0, 255))
+                buffer = io.BytesIO()
+                img.save(buffer, format="PNG")
 
-        img = Image.fromarray(img_data)
-        img = img.resize((256, 256), Image.Resampling.LANCZOS)
-
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        dataset = None
-
-        return buffer.getvalue()
+                return buffer.getvalue()
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error extracting tile: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Tile extraction failed: {str(e)}")
 
 
 @tile_router.get("/raster-tiles/{z}/{x}/{y}.png")
