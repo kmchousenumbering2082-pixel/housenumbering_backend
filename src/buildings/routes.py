@@ -153,7 +153,7 @@ def public_building_data_route(
     request: Request,
     is_public: Optional[bool] = Query(default=None),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1, le=100),
+    page_size: int = Query(default=10, ge=1, le=1000),
     search: Optional[str] = Query(
         default=None,
         description="Search by house number, road name, owner name, plus code, or house_no-other_info",
