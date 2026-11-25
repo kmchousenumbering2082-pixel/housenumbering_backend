@@ -38,3 +38,9 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 COPY requirements.txt ./
 RUN uv pip install -r requirements.txt --system --no-cache && \
 	rm requirements.txt
+
+# Copy the application code into the image (see .dockerignore for what is left out)
+COPY . .
+
+# Uploaded files live in the media_data volume; the app needs the folder to exist at startup
+RUN mkdir -p media

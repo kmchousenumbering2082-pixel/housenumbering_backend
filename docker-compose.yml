@@ -48,7 +48,7 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: always
-    entrypoint: "celery -A src.main.celery_app beat -l INFO"
+    entrypoint: "celery -A src.main.celery_app beat -l INFO -s /tmp/celerybeat-schedule"
     env_file:
       - .env
     networks:

@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from src.auth.dependencies import get_current_user
@@ -24,6 +24,7 @@ from src.buildings.service import (
     list_public_buildings,
     update_building,
     update_building_plus_code,
+    upload_buildings_file,
 )
 
 router = APIRouter(prefix="/api/v1/building", tags=["buildings"])
@@ -146,6 +147,70 @@ def assign_building_roads(
         db=db,
         distance_limit=distance_limit,
     )
+
+
+def _form_bool(value: str) -> bool:
+    return str(value).strip().lower() in ("true", "1", "yes")
+
+
+@router.post("/upload", status_code=201)
+def upload_buildings_route(
+    file: UploadFile = File(
+        ..., description="Building footprints: GeoJSON (.geojson/.json) or zipped Shapefile (.zip)"
+    ),
+    ward_no: Optional[int] = Form(
+        None,
+        description="Set this ward number on every building. Leave empty to read it from the file "
+        "(Ward_No / ward_no) or, if missing, from the ward boundaries.",
+    ),
+    update_existing: str = Form(
+        "false",
+        description="true = buildings already in the database (same position or building_id) are updated "
+        "with the file's values. false = they are skipped.",
+    ),
+    dry_run: str = Form(
+        "false",
+        description="true = only check the file and report what would happen; nothing is saved.",
+    ),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload building footprints (replaces the `building_load.py` script).
+
+    - Any coordinate system is accepted; it is converted to EPSG:4326.
+    - Columns are matched by name (e.g. `Ward_No`, `Final_Hous`/`house_no`, `Roof_Type`,
+      `Side`/`direction`, `Build_Type`/`building_use`, `tole_name`, `floor`);
+      every other column is kept in `attr_data`.
+    - New buildings get `building_id` numbers after the highest existing one.
+    - Buildings already in the database are skipped (or updated with `update_existing=true`),
+      so uploading the same file twice does not create duplicates.
+    - Plinth area (m²), centroid, bbox and plus code are calculated from the footprint.
+    - All or nothing: if saving fails, nothing is written.
+
+    Tip: run once with `dry_run=true` to see the report before saving.
+    """
+    return upload_buildings_file(
+        db=db,
+        upload=file,
+        user_id=current_user.id,
+        ward_no=ward_no,
+        update_existing=_form_bool(update_existing),
+        dry_run=_form_bool(dry_run),
+    )
+
+
+@router.post("/upload/", status_code=201, include_in_schema=False)
+def upload_buildings_route_with_slash(
+    file: UploadFile = File(...),
+    ward_no: Optional[int] = Form(None),
+    update_existing: str = Form("false"),
+    dry_run: str = Form("false"),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Same as /upload, with a trailing slash."""
+    return upload_buildings_route(file, ward_no, update_existing, dry_run, current_user, db)
 
 
 @router.get("/building_data/", response_model=BuildingPublicPageResponse)
